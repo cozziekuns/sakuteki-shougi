@@ -61,7 +61,6 @@ Shogi_Board.prototype.updatePieces = function() {
     for (var i = 0; i < this.pieces.length; i++) {
         this.pieces[i].update();
     }
-    console.log();
 };
 
 Shogi_Board.prototype._onClick = function(event) {

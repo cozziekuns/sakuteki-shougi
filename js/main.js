@@ -85,19 +85,56 @@ Shogi_Board.prototype.pushToFront = function(pieceSprite) {
 };
 
 Shogi_Board.prototype.placePiece = function(piece, x, y) {
+    piece.moveTo(x, y);
+    this.sprite.addChild(piece.sprite);
+    this.pieces.push(piece);
+};
+
+Shogi_Board.prototype.placePieceStarting = function(piece, x, y) {
     var dest_x = Math.abs(8 * piece.alliance - x);
     var dest_y = Math.abs(8 * piece.alliance - y);
 
-    piece.moveTo(dest_x, dest_y);
-
-    this.sprite.addChild(piece.sprite);
-    this.pieces.push(piece);
+    this.placePiece(piece, dest_x, dest_y);
 };
 
 Shogi_Board.prototype.removePiece = function(piece) {
     piece.demote();
     this.sprite.removeChild(piece.sprite);
     this.pieces.splice(this.pieces.indexOf(piece), 1);
+};
+
+Shogi_Board.prototype.moveActivePiece = function(activePiece, candidatePiece, dest_x, dest_y) {
+    if (activePiece.x >= 0 && activePiece.y >= 0) {
+        var range = activePiece.movementRange();
+
+        for (var i = 0; i < range.length; i++) {
+            if (dest_x != range[i][0] || dest_y != range[i][1]) {
+                continue;
+            }
+
+            if (candidatePiece) {
+                Game.currentPlayer.capture(candidatePiece);
+                this.removePiece(candidatePiece);
+            }
+
+            activePiece.moveTo(dest_x, dest_y);
+            activePiece.promoteIfPossible();
+            
+            Game.endTurn();
+        }
+    
+        activePiece.moveTo(activePiece.x, activePiece.y);
+        activePiece.deactivate();
+    } else {
+        if (candidatePiece) {
+            this.removePiece(activePiece);
+            Game.currentPlayer.capture(activePiece);
+        } else {
+            activePiece.moveTo(dest_x, dest_y);
+            Game.endTurn();
+        }
+        activePiece.deactivate();
+    }
 };
 
 Shogi_Board.prototype._createBoard = function() {
@@ -128,7 +165,7 @@ Shogi_Board.prototype._createPieces = function() {
 Shogi_Board.prototype._createPawns = function(alliance) {
     for (var i = 0; i < 9; i++) {
         var piece = new Shogi_Piece(7, alliance);
-        this.placePiece(piece, i, 6);
+        this.placePieceStarting(piece, i, 6);
     }
 };
 
@@ -137,8 +174,8 @@ Shogi_Board.prototype._createMinorPieces = function(alliance) {
         var piece = new Shogi_Piece(i, alliance);
         var piece2 = new Shogi_Piece(i, alliance);
 
-        this.placePiece(piece, 6 - i, 8);
-        this.placePiece(piece2, 8 - (6 - i), 8);
+        this.placePieceStarting(piece, 6 - i, 8);
+        this.placePieceStarting(piece2, 8 - (6 - i), 8);
     }
 };
 
@@ -147,9 +184,9 @@ Shogi_Board.prototype._createMajorPieces = function(alliance) {
     var hissha = new Shogi_Piece(1, alliance);
     var kaku = new Shogi_Piece(2, alliance);
     
-    this.placePiece(ou, 4, 8);
-    this.placePiece(hissha, 7, 7);
-    this.placePiece(kaku, 1, 7);
+    this.placePieceStarting(ou, 4, 8);
+    this.placePieceStarting(hissha, 7, 7);
+    this.placePieceStarting(kaku, 1, 7);
 };
 
 Shogi_Board.prototype._onClick = function(event) {
@@ -160,26 +197,17 @@ Shogi_Board.prototype._onClick = function(event) {
     var candidatePiece = Game.board.pieceAt(dest_x, dest_y);
     var activePiece = Game.board.getActivePiece();
 
-    if (activePiece) {
-        var range = activePiece.movementRange();
-        for (var i = 0; i < range.length; i++) {
-            if (dest_x != range[i][0] || dest_y != range[i][1]) {
-                continue;
-            }
-
-            if (candidatePiece) {
-                Game.currentPlayer.capture(candidatePiece);
-                Game.board.removePiece(candidatePiece);
-            }
-
-            activePiece.moveTo(dest_x, dest_y);
-            activePiece.promoteIfPossible();
-            
-            Game.endTurn();
+    if (!Game.board.valid(dest_x, dest_y)) {
+        if (activePiece && activePiece.x < 0 && activePiece.y < 0) {
+            Game.board.removePiece(activePiece);
+            Game.currentPlayer.capture(activePiece);
+            activePiece.deactivate();
         }
-    
-        activePiece.moveTo(activePiece.x, activePiece.y);
-        activePiece.deactivate();
+        return;
+    }
+
+    if (activePiece) {
+        Game.board.moveActivePiece(activePiece, candidatePiece, dest_x, dest_y);
     } else if (candidatePiece) {
         if (candidatePiece.alliance != Game.currentPlayer.alliance) {
             return;
@@ -199,11 +227,44 @@ function Shogi_Hand() {
     this.initialize.apply(this, arguments);
 }
 
+Object.defineProperties(Shogi_Hand.prototype, {
+    alliance: { get: function() { return this._alliance; } },
+});
+
 Shogi_Hand.prototype.initialize = function(alliance) {
     this._alliance = alliance;
     this._pieces = {};
     this._createSprite();
     this._createInteractiveEvents();
+};
+
+Shogi_Hand.prototype.addPiece = function(piece) {
+    if (!(piece.id in this._pieces)) {
+        this._pieces[piece.id] = [];
+    }
+
+    this._putInPlace(piece);    
+    this.sprite.addChildAt(piece.sprite, 0);
+    this._pieces[piece.id].push(piece);
+};
+
+Shogi_Hand.prototype.removePiece = function(piece) {
+    this.sprite.removeChild(piece.sprite);
+
+    var index = this._pieces[piece.id].indexOf(piece);
+    this._pieces[piece.id].splice(index, 1);
+
+    this._hoverPieceOverBoard(piece);
+};
+
+Shogi_Hand.prototype.pickUpPiece = function(pieceId) {
+    var pieces = this._pieces[pieceId]
+    if (!pieces || pieces.length == 0) {
+        return;
+    }
+
+    pieces[pieces.length - 1].activate();
+    this.removePiece(pieces[pieces.length - 1]);
 };
 
 Shogi_Hand.prototype._createSprite = function() {
@@ -218,21 +279,13 @@ Shogi_Hand.prototype._createSprite = function() {
         this.sprite.y = offset;
     }
 
+    this.sprite.parentObj = this;
     Game.context.stage.addChild(this.sprite);
 };
 
 Shogi_Hand.prototype._createInteractiveEvents = function() {
-
-};
-
-Shogi_Hand.prototype.addPiece = function(piece) {
-    if (!(piece.id in this._pieces)) {
-        this._pieces[piece.id] = [];
-    }
-
-    this._putInPlace(piece);    
-    this.sprite.addChildAt(piece.sprite, this.sprite.children.length);
-    this._pieces[piece.id].push(piece);
+    this.sprite.interactive = true;
+    this.sprite.on('pointerdown', this._onClick);
 };
 
 Shogi_Hand.prototype._putInPlace = function(piece) {
@@ -246,14 +299,43 @@ Shogi_Hand.prototype._putInPlace = function(piece) {
     piece.sprite.x = 12 + type_off_x + piece_off_x;
     piece.sprite.y = 12 + Math.floor((piece.id - 1) / 2) * 70;
 
-    console.log(piece.sprite.x);
-
     if (this._alliance == 1) {
         piece.sprite.x = 304 - piece.sprite.x - 64;
         piece.sprite.y = 304 - piece.sprite.y - 64;
     }
 };
 
+Shogi_Hand.prototype._hoverPieceOverBoard = function(piece) {
+    var coords = Game.input().mouse.getLocalPosition(Game.board.sprite);
+    
+    Game.board.placePiece(piece, -1, -1);
+    piece.sprite.x = coords['x'] - (piece.sprite.width / 2);
+    piece.sprite.y = coords['y'] - (piece.sprite.height / 2);
+};
+
+Shogi_Hand.prototype._onClick = function() {
+    if (this.parentObj.alliance != Game.currentPlayer.alliance) {
+        return;
+    }
+
+    if (Game.board.getActivePiece()) {
+        return;
+    }
+
+    var coords = Game.input().mouse.getLocalPosition(this);
+    var x = (this.parentObj.alliance == 1 ? 304 - coords['x'] : coords['x']);
+    var y = (this.parentObj.alliance == 1 ? 304 - coords['y'] : coords['y']);
+
+    var pieceId = Math.floor((y - 12) / 70) * 2 + Math.floor((x - 12) / 160);
+    pieceId = Math.min(pieceId, 6);
+
+    var xBound = (pieceId % 2) * 160;
+    var yBound = Math.floor(pieceId / 2) * 70;
+    if (x >= xBound && x < xBound + 64 && y >= yBound && y < yBound + 64) {
+        this.parentObj.pickUpPiece(pieceId + 1);
+    }
+};
+ 
 //=============================================================================
 // ** Shogi_Piece
 //=============================================================================
@@ -475,6 +557,7 @@ Game.run = function() {
     Game.createContext();
     Game.createBoard();
     Game.createPlayers();
+    Game.placeBoardOnTop();
 };
 
 Game.input = function() {
@@ -507,6 +590,11 @@ Game.createPlayers = function() {
 
 Game.createBoard = function() {
     this.board = new Shogi_Board();  
+};
+
+Game.placeBoardOnTop = function() {
+    var stage =  Game.context.stage;
+    stage.addChildAt(this.board.sprite, stage.children.length);
 };
 
 //=============================================================================

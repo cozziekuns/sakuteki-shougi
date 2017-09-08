@@ -131,8 +131,8 @@ Shogi_Board.prototype.moveActivePiece = function(activePiece, candidatePiece, de
 
         activePiece.moveTo(dest_x, dest_y);
         activePiece.promoteIfPossible();
-        
-        this._fog.updateSprites();
+
+        this.updateFog();
         Game.endTurn();
     }
 
@@ -148,9 +148,13 @@ Shogi_Board.prototype.dropActivePiece = function(activePiece, candidatePiece, de
     } else {
         activePiece.moveTo(dest_x, dest_y);
 
-        this._fog.updateSprites();
+        this.updateFog();
         Game.endTurn();
     }
+};
+
+Shogi_Board.prototype.updateFog = function() {
+    this._fog.update();
 };
 
 Shogi_Board.prototype._createBoard = function() {
@@ -276,7 +280,7 @@ Shogi_Fog.prototype._createSprites = function() {
     }
 };
 
-Shogi_Fog.prototype.updateSprites = function() {
+Shogi_Fog.prototype.update = function() {
     for (var j = 0; j < 9; j++) {
         for (var i = 0; i < 9; i++) {
             this._sprites[j][i].alpha = 0.5;
@@ -600,7 +604,10 @@ Shogi_Piece.prototype.vision = function() {
             this.rangeInDirection(this._x, this._y, 0, this._forward())
         );
     } else if (this._id == 7) {
+        vision.push([this._x - 1, this._y + this._forward()]);
         vision.push([this._x, this._y + this._forward()]);
+        vision.push([this._x + 1, this._y + this._forward()]);
+        vision.push([this._x, this._y + this._forward() * 2]);
     }
 
     for (var i = vision.length - 1; i >= 0; i--) {
@@ -685,6 +692,7 @@ Game.run = function() {
     Game.createContext();
     Game.createBoard();
     Game.createPlayers();
+    Game.board.updateFog();
     Game.placeBoardOnTop();
 };
 
@@ -717,7 +725,7 @@ Game.createPlayers = function() {
 };
 
 Game.createBoard = function() {
-    this.board = new Shogi_Board();  
+    this.board = new Shogi_Board();
 };
 
 Game.placeBoardOnTop = function() {

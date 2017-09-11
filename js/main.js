@@ -50,6 +50,18 @@ Shogi_Player.prototype.vision = function() {
 };
 
 //=============================================================================
+// ** Shogi_Enemy
+//=============================================================================
+
+function Shogi_Enemy() {
+    this.initialize.apply(this, arguments);
+}
+
+Shogi_Enemy.prototype.initialize = function() {
+    
+};
+
+//=============================================================================
 // ** Shogi_Board
 //=============================================================================
 
@@ -63,6 +75,10 @@ Shogi_Board.prototype.initialize = function() {
     this._createPieces();
     this._createFog();
     this._createInteractiveEvents();
+};
+
+Shogi_Board.prototype.isFog = function(x, y) {
+    return this._fog.isFog(x, y);
 };
 
 Shogi_Board.prototype.valid = function(x, y) {
@@ -104,10 +120,10 @@ Shogi_Board.prototype.placePiece = function(piece, x, y) {
 };
 
 Shogi_Board.prototype.placePieceStarting = function(piece, x, y) {
-    var dest_x = Math.abs(8 * piece.alliance - x);
-    var dest_y = Math.abs(8 * piece.alliance - y);
+    var destX = Math.abs(8 * piece.alliance - x);
+    var destY = Math.abs(8 * piece.alliance - y);
 
-    this.placePiece(piece, dest_x, dest_y);
+    this.placePiece(piece, destX, destY);
 };
 
 Shogi_Board.prototype.removePiece = function(piece) {
@@ -116,12 +132,28 @@ Shogi_Board.prototype.removePiece = function(piece) {
     this.pieces.splice(this.pieces.indexOf(piece), 1);
 };
 
-Shogi_Board.prototype.moveActivePiece = function(activePiece, candidatePiece, dest_x, dest_y) {
-    var range = activePiece.movementRange();
+Shogi_Board.prototype.moveActivePiece = function(activePiece, candidatePiece, destX, destY) {
+    if (this._destinationIsValid(activePiece, destX, destY)) {
 
-    for (var i = 0; i < range.length; i++) {
-        if (dest_x != range[i][0] || dest_y != range[i][1]) {
-            continue;
+        if (this.isFog(destX, destY)) {
+            var xDiff = destX - activePiece.x
+            var yDiff = destY - activePiece.y;
+            if (xDiff != 0) {
+                var xDir = xDiff / Math.abs(xDiff);
+                for (var i = xDir; i < xDiff; i = i + xDir) {
+                    if (this.pieceAt(activePiece.x + i, activePiece.y)) {
+                        destX = activePiece.x - xDir + i; 
+                    }
+                }
+            } else if (yDiff != 0) {
+                var yDir = yDiff / Math.abs(yDiff);
+                for (var i = yDir; Math.abs(i) < Math.abs(yDiff); i = i + yDir) {
+                    if (this.pieceAt(activePiece.x, activePiece.y + i)) {
+                        destY = activePiece.y - yDir + i;
+                    }
+                }
+            }
+            candidatePiece = null;
         }
 
         if (candidatePiece) {
@@ -129,7 +161,7 @@ Shogi_Board.prototype.moveActivePiece = function(activePiece, candidatePiece, de
             this.removePiece(candidatePiece);
         }
 
-        activePiece.moveTo(dest_x, dest_y);
+        activePiece.moveTo(destX, destY);
         activePiece.promoteIfPossible();
 
         this.updateFog();
@@ -140,17 +172,31 @@ Shogi_Board.prototype.moveActivePiece = function(activePiece, candidatePiece, de
     activePiece.deactivate();
 };
 
-Shogi_Board.prototype.dropActivePiece = function(activePiece, candidatePiece, dest_x, dest_y) {
+Shogi_Board.prototype.dropActivePiece = function(activePiece, candidatePiece, destX, destY) {
     activePiece.deactivate();
     if (candidatePiece) {
         Game.currentPlayer.capture(activePiece);
         this.removePiece(activePiece);
+        if (this.isFog(destX, destY)) {
+            Game.endTurn();
+        }
     } else {
-        activePiece.moveTo(dest_x, dest_y);
+        activePiece.moveTo(destX, destY);
 
         this.updateFog();
         Game.endTurn();
     }
+};
+
+Shogi_Board.prototype._destinationIsValid = function(activePiece, destX, destY) {
+    var range = activePiece.movementRange();
+    for (var i = 0; i < range.length; i++) {
+        if (destX == range[i][0] && destY == range[i][1]) {
+            return true;
+        }
+    }
+
+    return false;
 };
 
 Shogi_Board.prototype.updateFog = function() {
@@ -215,13 +261,13 @@ Shogi_Board.prototype._createInteractiveEvents = function() {
 
 Shogi_Board.prototype._onClick = function(event) {
     var coords = Game.input().mouse.getLocalPosition(Game.board.sprite);
-    var dest_x = Math.floor(coords['x'] / 64);
-    var dest_y = Math.floor(coords['y'] / 64);
+    var destX = Math.floor(coords['x'] / 64);
+    var destY = Math.floor(coords['y'] / 64);
 
-    var candidatePiece = Game.board.pieceAt(dest_x, dest_y);
+    var candidatePiece = Game.board.pieceAt(destX, destY);
     var activePiece = Game.board.activePiece();
 
-    if (!Game.board.valid(dest_x, dest_y)) {
+    if (!Game.board.valid(destX, destY)) {
         if (activePiece && activePiece.x < 0 && activePiece.y < 0) {
             activePiece.deactivate();
             Game.currentPlayer.capture(activePiece);
@@ -232,9 +278,9 @@ Shogi_Board.prototype._onClick = function(event) {
 
     if (activePiece) {
         if (activePiece.x >= 0 && activePiece.y >= 0) {
-            Game.board.moveActivePiece(activePiece, candidatePiece, dest_x, dest_y);
+            Game.board.moveActivePiece(activePiece, candidatePiece, destX, destY);
         } else {
-            Game.board.dropActivePiece(activePiece, candidatePiece, dest_x, dest_y);
+            Game.board.dropActivePiece(activePiece, candidatePiece, destX, destY);
         }
     } else if (candidatePiece) {
         if (candidatePiece.alliance != Game.currentPlayer.alliance) {
@@ -258,6 +304,10 @@ function Shogi_Fog() {
 Shogi_Fog.prototype.initialize = function(board) {
     this._board = board;
     this._createSprites();
+};
+
+Shogi_Fog.prototype.isFog = function(x, y) {
+    return this._sprites[y][x].alpha > 0;
 };
 
 Shogi_Fog.prototype._createSprites = function() {
@@ -485,58 +535,21 @@ Shogi_Piece.prototype.movementRange = function() {
     var range = [];
 
     if (this._id == 0) {
-        for (var j = -1; j <= 1; j++) {
-            for (var i = -1; i <= 1; i++) {
-                if (i == 0 && j == 0) {
-                    continue;
-                }
-                range.push([this._x + i, this._y + j]);
-            }
-        }
+        range = range.concat(this._movementRangeForOu());
     } else if (this._id == 1) {
-        range = range.concat(this.rangeInDirection(this._x, this._y, 0, -1));
-        range = range.concat(this.rangeInDirection(this._x, this._y, -1, 0));
-        range = range.concat(this.rangeInDirection(this._x, this._y, 1, 0));
-        range = range.concat(this.rangeInDirection(this._x, this._y, 0, 1));
-        if (this._promoted) {
-            range.push([this._x - 1, this._y - 1]);
-            range.push([this._x - 1, this._y + 1]);
-            range.push([this._x + 1, this._y - 1]);
-            range.push([this._x + 1, this._y + 1]);
-        }
+        range = range.concat(this._movementRangeForHissha());
     } else if (this._id == 2) {
-        range = range.concat(this.rangeInDirection(this._x, this._y, -1, -1));
-        range = range.concat(this.rangeInDirection(this._x, this._y, -1, 1));
-        range = range.concat(this.rangeInDirection(this._x, this._y, 1, -1));
-        range = range.concat(this.rangeInDirection(this._x, this._y, 1, 1));
-        if (this._promoted) {
-            range.push([this._x + 1, this._y]);
-            range.push([this._x - 1, this._y]);
-            range.push([this._x, this._y - 1]);
-            range.push([this._x, this._y + 1]);
-        }
+        range = range.concat(this._movementRangeForKaku());
     } else if (this._id == 3 || this._promoted) {
-        range.push([this._x - 1, this._y + this._forward()]);
-        range.push([this._x, this._y + this._forward()]);
-        range.push([this._x + 1, this._y + this._forward()]);
-        range.push([this._x - 1, this._y]);
-        range.push([this._x + 1, this._y]);
-        range.push([this._x, this._y - this._forward()]);
+        range = range.concat(this._movementRangeForKin());
     } else if (this._id == 4) {
-        range.push([this._x - 1, this._y + this._forward()]);
-        range.push([this._x, this._y + this._forward()]);
-        range.push([this._x + 1, this._y + this._forward()]);
-        range.push([this._x - 1, this._y - this._forward()]);
-        range.push([this._x + 1, this._y - this._forward()]);
+        range = range.concat(this._movementRangeForGin());
     } else if (this._id == 5) {
-        range.push([this._x - 1, this._y + this._forward() * 2]);
-        range.push([this._x + 1, this._y + this._forward() * 2]);
+        range = range.concat(this._movementRangeForKeima());
     } else if (this._id == 6) {
-        range = range.concat(
-            this.rangeInDirection(this._x, this._y, 0, this._forward())
-        );
+        range = range.concat(this._movementRangeForKyo());
     } else if (this._id == 7) {
-        range.push([this._x, this._y + this._forward()]);
+        range = range.concat(this._movementRangeForFu())
     }
 
     for (var i = range.length - 1; i >= 0; i--) {
@@ -552,26 +565,94 @@ Shogi_Piece.prototype.movementRange = function() {
     return range;
 };
 
-Shogi_Piece.prototype.rangeInDirection = function(sx, sy, x_dir, y_dir) {
+Shogi_Piece.prototype._movementRangeForOu = function() {
     var range = [];
-
-    var i = x_dir;
-    var j = y_dir;
     
-    while (true) {
-        if (!Game.board.valid(sx + i, sy + j)) {
-            break;
+    for (var j = -1; j <= 1; j++) {
+        for (var i = -1; i <= 1; i++) {
+            if (i == 0 && j == 0) {
+                continue;
+            }
+            range.push([this._x + i, this._y + j]);
         }
-        range.push([sx + i, sy + j]);
-        if (Game.board.pieceAt(sx + i, sy + j)) {
-            break;
-        }
-        
-        i += x_dir;
-        j += y_dir;
     }
 
     return range;
+};
+
+Shogi_Piece.prototype._movementRangeForHissha = function() {
+    var range = [];
+    range = range.concat(this.rangeInDirection(this._x, this._y, 0, -1));
+    range = range.concat(this.rangeInDirection(this._x, this._y, -1, 0));
+    range = range.concat(this.rangeInDirection(this._x, this._y, 1, 0));
+    range = range.concat(this.rangeInDirection(this._x, this._y, 0, 1));
+    if (this._promoted) {
+        range.push([this._x - 1, this._y - 1]);
+        range.push([this._x - 1, this._y + 1]);
+        range.push([this._x + 1, this._y - 1]);
+        range.push([this._x + 1, this._y + 1]);
+    }
+    return range;
+};
+
+Shogi_Piece.prototype._movementRangeForKaku = function() {
+    var range = [];
+    range = range.concat(this.rangeInDirection(this._x, this._y, -1, -1));
+    range = range.concat(this.rangeInDirection(this._x, this._y, -1, 1));
+    range = range.concat(this.rangeInDirection(this._x, this._y, 1, -1));
+    range = range.concat(this.rangeInDirection(this._x, this._y, 1, 1));
+    if (this._promoted) {
+        range.push([this._x + 1, this._y]);
+        range.push([this._x - 1, this._y]);
+        range.push([this._x, this._y - 1]);
+        range.push([this._x, this._y + 1]);
+    }
+    return range;
+};
+
+Shogi_Piece.prototype._movementRangeForKin = function() {
+    var range = [];
+    range.push([this._x - 1, this._y + this._forward()]);
+    range.push([this._x, this._y + this._forward()]);
+    range.push([this._x + 1, this._y + this._forward()]);
+    range.push([this._x - 1, this._y]);
+    range.push([this._x + 1, this._y]);
+    range.push([this._x, this._y - this._forward()]);
+    return range;
+};
+
+Shogi_Piece.prototype._movementRangeForGin = function() {
+    var range = [];
+    range.push([this._x - 1, this._y + this._forward()]);
+    range.push([this._x, this._y + this._forward()]);
+    range.push([this._x + 1, this._y + this._forward()]);
+    range.push([this._x - 1, this._y - this._forward()]);
+    range.push([this._x + 1, this._y - this._forward()]);
+    return range;
+};
+
+Shogi_Piece.prototype._movementRangeForKeima = function() {
+    var range = [];
+    range.push([this._x - 1, this._y + this._forward() * 2]);
+    range.push([this._x + 1, this._y + this._forward() * 2]);
+    return range;
+};
+
+Shogi_Piece.prototype._movementRangeForFu = function() {
+    var range = [[this._x, this._y + this._forward()]];
+    return range;
+};
+
+Shogi_Piece.prototype._movementRangeForKyo = function() {
+    var range = [];
+    range = range.concat(
+        this.rangeInDirection(this._x, this._y, 0, this._forward())
+    );
+    return range;
+};
+
+Shogi_Piece.prototype.rangeInDirection = function(sx, sy, x_dir, y_dir) {
+    return this._nodesInDirection(sx, sy, x_dir, y_dir, false);
 };
 
 Shogi_Piece.prototype.vision = function() {
@@ -586,10 +667,10 @@ Shogi_Piece.prototype.vision = function() {
             vision = vision.concat(this._visionDiamond(3));
         }
     } else if (this._id == 2) {
-        vision = vision.concat(this.rangeInDirection(this._x, this._y, -1, -1));
-        vision = vision.concat(this.rangeInDirection(this._x, this._y, -1, 1));
-        vision = vision.concat(this.rangeInDirection(this._x, this._y, 1, -1));
-        vision = vision.concat(this.rangeInDirection(this._x, this._y, 1, 1));
+        vision = vision.concat(this.visionInDirection(this._x, this._y, -1, -1));
+        vision = vision.concat(this.visionInDirection(this._x, this._y, -1, 1));
+        vision = vision.concat(this.visionInDirection(this._x, this._y, 1, -1));
+        vision = vision.concat(this.visionInDirection(this._x, this._y, 1, 1));
         if (this._promoted) {
             vision = vision.concat(this._visionDiamond(1));
         }
@@ -601,7 +682,7 @@ Shogi_Piece.prototype.vision = function() {
         vision = vision.concat(this._visionDiamond(3));
     } else if (this._id == 6) {
         vision = vision.concat(
-            this.rangeInDirection(this._x, this._y, 0, this._forward())
+            this.visionInDirection(this._x, this._y, 0, this._forward())
         );
     } else if (this._id == 7) {
         vision.push([this._x - 1, this._y + this._forward()]);
@@ -619,6 +700,10 @@ Shogi_Piece.prototype.vision = function() {
     return vision;
 };
 
+Shogi_Piece.prototype.visionInDirection = function(sx, sy, x_dir, y_dir) {
+    return this._nodesInDirection(sx, sy, x_dir, y_dir, true);
+};
+
 Shogi_Piece.prototype._visionDiamond = function(radius) {
     var vision = []
 
@@ -632,6 +717,30 @@ Shogi_Piece.prototype._visionDiamond = function(radius) {
     }
 
     return vision;
+};
+
+Shogi_Piece.prototype._nodesInDirection = function(sx, sy, x_dir, y_dir, vision) {
+    var range = [];
+
+    var i = x_dir;
+    var j = y_dir;
+    
+    while (true) {
+        if (!Game.board.valid(sx + i, sy + j)) {
+            break;
+        }
+        range.push([sx + i, sy + j]);
+        if (Game.board.pieceAt(sx + i, sy + j)) {
+            if (vision || !Game.board.isFog(sx + i, sy + j)) {
+                break;
+            }   
+        }
+        
+        i += x_dir;
+        j += y_dir;
+    }
+
+    return range;
 };
 
 Shogi_Piece.prototype._createSprite = function() {

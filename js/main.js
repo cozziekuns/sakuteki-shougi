@@ -80,6 +80,7 @@ Shogi_Player.prototype.executeMove = function(move) {
 Shogi_Player.prototype.capture = function(piece) {
     piece.demote();
     piece.setAlliance(this._alliance);
+    piece.moveTo(-1, -1);
 
     this._hand.addPiece(piece);
 };
@@ -108,6 +109,39 @@ Shogi_Player.prototype.vision = function() {
     return vision;
 };
 
+
+Shogi_Player.prototype._getAllMoves = function() {
+    var moves = [];
+    var piecesOnBoard = this.friendlyPieces();
+    var piecesInHand = this._hand.pieces;
+
+    for (var i = 0; i < piecesOnBoard.length; i++) {
+        var range = piecesOnBoard[i].movementRange();
+        for (var j = 0; j < range.length; j++) {
+            var move = new Shogi_Move(piecesOnBoard[i], range[j][0], range[j][1]);
+            moves.push(move);
+        }
+    }
+
+    for (var k in piecesInHand) {
+        if (piecesInHand[k].length == 0) {
+            continue;
+        }
+        
+        var piece = piecesInHand[k][0];
+        for (var j = 0; j < 9; j++) {
+            for (var i = 0; i < 9; i++) {
+                if (Game.board.pieceAt(i, j)) {
+                    continue;
+                }
+                moves.push(new Shogi_Move(piece, i, j));
+            }
+        }
+    }
+    
+    return moves;
+};
+
 //=============================================================================
 // ** Shogi_Enemy
 //=============================================================================
@@ -126,20 +160,6 @@ Shogi_Enemy.prototype.initialize = function(alliance) {
 Shogi_Enemy.prototype.selectMove = function() {
     var moves = this._getAllMoves();
     return moves[Math.floor(Math.random() * moves.length)];
-};
-
-// TODO: Include drops...
-Shogi_Enemy.prototype._getAllMoves = function() {
-    var moves = [];
-    var pieces = this.friendlyPieces();
-    for (var i = 0; i < pieces.length; i++) {
-        var range = pieces[i].movementRange();
-        for (var j = 0; j < range.length; j++) {
-            var move = new Shogi_Move(pieces[i], range[j][0], range[j][1]);
-            moves.push(move);
-        }
-    }
-    return moves;
 };
 
 //=============================================================================
@@ -200,8 +220,7 @@ Shogi_Board.prototype.pushToBack = function(pieceSprite) {
     this.sprite.addChildAt(pieceSprite, 0);
 };
 
-Shogi_Board.prototype.placePiece = function(piece, x, y) {
-    piece.moveTo(x, y);
+Shogi_Board.prototype.placePiece = function(piece) {
     this.sprite.addChild(piece.sprite);
     this.pieces.push(piece);
 };
@@ -210,7 +229,8 @@ Shogi_Board.prototype.placePieceStarting = function(piece, x, y) {
     var destX = Math.abs(8 * piece.alliance - x);
     var destY = Math.abs(8 * piece.alliance - y);
 
-    this.placePiece(piece, destX, destY);
+    piece.moveTo(destX, destY);
+    this.placePiece(piece);
 };
 
 Shogi_Board.prototype.removePiece = function(piece) {
@@ -399,52 +419,6 @@ Shogi_Board.prototype._onClick = function(event) {
 };
 
 //=============================================================================
-// ** Shogi_Fog
-//=============================================================================
-
-function Shogi_Fog() {
-    this.initialize.apply(this, arguments);
-}
-
-Shogi_Fog.prototype.initialize = function(board) {
-    this._board = board;
-    this._createSprites();
-};
-
-Shogi_Fog.prototype._createSprites = function() {
-    this._sprites = []
-
-    for (var j = 0; j < 9; j++) {
-        this._sprites[j] = [];
-
-        for (var i = 0; i < 9; i++) {
-            var boardSprite = this._board.sprite;
-            var sprite = new PIXI.Sprite.fromImage('img/fog.png');
-
-            sprite.x = i * 64;
-            sprite.y = j * 64;
-            sprite.alpha = 0.5;
-            this._sprites[j][i] = sprite;
-
-            boardSprite.addChildAt(sprite, boardSprite.children.length);
-        }
-    }
-};
-
-Shogi_Fog.prototype.update = function() {
-    for (var j = 0; j < 9; j++) {
-        for (var i = 0; i < 9; i++) {
-            this._sprites[j][i].alpha = 0.5;
-        }
-    }
-
-    var vision = Game.player.vision();
-    for (var i = 0; i < vision.length; i++) {
-        this._sprites[vision[i][1]][vision[i][0]].alpha = 0;
-    }
-};
-
-//=============================================================================
 // ** Shogi_Hand
 //=============================================================================
 
@@ -454,6 +428,7 @@ function Shogi_Hand() {
 
 Object.defineProperties(Shogi_Hand.prototype, {
     alliance: { get: function() { return this._alliance; } },
+    pieces: { get: function() { return this._pieces; } },
 });
 
 Shogi_Hand.prototype.initialize = function(alliance) {
@@ -533,7 +508,7 @@ Shogi_Hand.prototype._putInPlace = function(piece) {
 Shogi_Hand.prototype._hoverPieceOverBoard = function(piece) {
     var coords = Game.input().mouse.getLocalPosition(Game.board.sprite);
     
-    Game.board.placePiece(piece, -1, -1);
+    Game.board.placePiece(piece);
     piece.sprite.x = coords['x'] - (piece.sprite.width / 2);
     piece.sprite.y = coords['y'] - (piece.sprite.height / 2);
 };
@@ -883,6 +858,52 @@ Shogi_Piece.prototype._onMouseMove = function() {
     var coords = Game.input().mouse.getLocalPosition(Game.board.sprite);
     this.x = coords['x'] - (this.width / 2);
     this.y = coords['y'] - (this.height / 2);
+};
+
+//=============================================================================
+// ** Shogi_Fog
+//=============================================================================
+
+function Shogi_Fog() {
+    this.initialize.apply(this, arguments);
+}
+
+Shogi_Fog.prototype.initialize = function(board) {
+    this._board = board;
+    this._createSprites();
+};
+
+Shogi_Fog.prototype._createSprites = function() {
+    this._sprites = []
+
+    for (var j = 0; j < 9; j++) {
+        this._sprites[j] = [];
+
+        for (var i = 0; i < 9; i++) {
+            var boardSprite = this._board.sprite;
+            var sprite = new PIXI.Sprite.fromImage('img/fog.png');
+
+            sprite.x = i * 64;
+            sprite.y = j * 64;
+            sprite.alpha = 0.5;
+            this._sprites[j][i] = sprite;
+
+            boardSprite.addChildAt(sprite, boardSprite.children.length);
+        }
+    }
+};
+
+Shogi_Fog.prototype.update = function() {
+    for (var j = 0; j < 9; j++) {
+        for (var i = 0; i < 9; i++) {
+            this._sprites[j][i].alpha = 0.5;
+        }
+    }
+
+    var vision = Game.player.vision();
+    for (var i = 0; i < vision.length; i++) {
+        this._sprites[vision[i][1]][vision[i][0]].alpha = 0;
+    }
 };
 
 //=============================================================================

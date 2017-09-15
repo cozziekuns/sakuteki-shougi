@@ -64,7 +64,7 @@ Shogi_Player.prototype.isNifu = function() {
     var pieces = this.friendlyPieces();
 
     for (var i = 0; i < pieces.length; i++) {
-        var piece = pieces[i]
+        var piece = pieces[i];
         if (piece.id == 7 && !piece.isPromoted()) {
             pawns.push(piece);
         }

@@ -6,15 +6,22 @@ function Game_Action() {
     this.initialize.apply(this, arguments);
 }
 
-Game_Action.prototype.initialize = function(piece, action, actionArgs) {
+Game_Action.prototype.initialize = function(piece, action, destX, destY) {
     this._piece = piece;
     this._action = action;
+    this._lastX = piece.x;
+    this._lastY = piece.y;
+
+    if (destX && destY) {
+        this._destX = destX;
+        this._destY = destY;
+    }
 };
 
 Game_Action.prototype.execute = function() {
     switch (this._action) {
         case 'move', 'drop':
-            piece.moveTo(this._actionArgs[0], this._actionArgs[1]);
+            piece.moveTo(this._destX, this._destY);
         case 'capture':
             piece.capture();
         case 'promote':
@@ -27,11 +34,11 @@ Game_Action.prototype.execute = function() {
 Game_Action.prototype.undo = function() {
     switch (this._action) {
         case 'move':
-            piece.moveTo(piece.x, piece.y);
+            piece.moveTo(this._lastX, this._lastY);
         case 'drop':
             piece.moveTo(-1, -1);
         case 'capture':
-            piece.decapture(piece.x, piece.y);
+            piece.decapture(this._lastX, this._lastY);
         case 'promote':
             piece.demote();
         case 'demote':
@@ -76,15 +83,15 @@ Game_Board.prototype._createPieces = function() {
 
 Game_Board.prototype._createPawns = function(alliance) {
     for (var i = 0; i < 9; i++) {
-        var pawn = new Game_Piece(this, 7, alliance);
+        var pawn = new Game_Piece(7, alliance);
         this._placePieceStarting(pawn, i, 6);
     }
 };
 
 Game_Board.prototype._createMinorPieces = function(alliance) {
     for (var i = 6; i >= 3; i--) {
-        var piece = new Game_Piece(this, i, alliance);
-        var piece2 = new Game_Piece(this, i, alliance);
+        var piece = new Game_Piece(i, alliance);
+        var piece2 = new Game_Piece(i, alliance);
 
         this._placePieceStarting(piece, 6 - i, 8);
         this._placePieceStarting(piece2, 8 - (6 - i), 8);
@@ -92,9 +99,9 @@ Game_Board.prototype._createMinorPieces = function(alliance) {
 };
 
 Game_Board.prototype._createMajorPieces = function(alliance) {
-    var ou = new Game_Piece(this, 0, alliance);
-    var hissha = new Game_Piece(this, 1, alliance);
-    var kaku = new Game_Piece(this, 2, alliance);
+    var ou = new Game_Piece(0, alliance);
+    var hissha = new Game_Piece(1, alliance);
+    var kaku = new Game_Piece(2, alliance);
 
     this._placePieceStarting(ou, 4, 8);
     this._placePieceStarting(hissha, 7, 7);
@@ -125,8 +132,7 @@ Object.defineProperties(Game_Piece.prototype, {
     promoted: { get: function() { return this._promoted; } },
 });
 
-Game_Piece.prototype.initialize = function(board, id, alliance) {
-    this._board = board;
+Game_Piece.prototype.initialize = function(id, alliance) {
     this._id = id;
     this._alliance = alliance
     this._x = 0;

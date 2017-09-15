@@ -12,10 +12,6 @@ BattleManager.init = function() {
     this._actionIndex = 0;
 };
 
-BattleManager.getBoard = function() {
-    return this._board;
-};
-
 BattleManager.queueAction = function(actionList) {
     this._actionQueue.push(actionList);
 };

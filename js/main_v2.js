@@ -33,9 +33,10 @@ Game.createContext = function() {
 };
 
 Game.createBoard = function() {
-    this._boardSprite = new Sprite_Board();
+    this._boardSprite = new PIXI.Sprite.fromImage('img/board.png');
     this._boardSprite.x = (Game.WINDOW_WIDTH - 576) / 2;
     this._boardSprite.y = (Game.WINDOW_HEIGHT - 576) / 2;
+    this.context.stage.addChild(this._boardSprite);
 };
 
 Game.createPieces = function() {
@@ -44,6 +45,15 @@ Game.createPieces = function() {
         var sprite = new Sprite_Piece(BattleManager.board.pieces[i]);
         this._pieceSprites.push(sprite);
     }
+};
+
+Game.pushToFront = function(sprite) {
+    this.context.stage.removeChild(sprite);
+    this.context.stage.addChildAt(sprite, this.context.stage.children.length);
+};
+
+Game.promptForPromotion = function(piece) {
+    // Do nothing for now...
 };
 
 //=============================================================================

@@ -9,41 +9,108 @@ function Game_Action() {
 Game_Action.prototype.initialize = function(piece, action, destX, destY) {
     this._piece = piece;
     this._action = action;
+    this._destX = destX;
+    this._destY = destY;
     this._lastX = piece.x;
     this._lastY = piece.y;
-
-    if (destX && destY) {
-        this._destX = destX;
-        this._destY = destY;
-    }
 };
 
 Game_Action.prototype.execute = function() {
     switch (this._action) {
-        case 'move', 'drop':
-            piece.moveTo(this._destX, this._destY);
+        case 'move':
+            this._piece.moveTo(this._destX, this._destY);
+            break;
+        case 'drop':
+            this._piece.moveTo(this._destX, this._destY);
+            break;
         case 'capture':
-            piece.capture();
+            this._piece.capture();
+            break;
         case 'promote':
-            piece.promote();
+            this._piece.promote();
+            break;
         case 'demote':
-            piece.demote();
+            this._piece.demote();
+            break;
     }
 };
 
 Game_Action.prototype.undo = function() {
     switch (this._action) {
         case 'move':
-            piece.moveTo(this._lastX, this._lastY);
+            this._piece.moveTo(this._lastX, this._lastY);
+            break;
         case 'drop':
-            piece.moveTo(-1, -1);
+            this._piece.moveTo(-1, -1);
+            break;
         case 'capture':
-            piece.decapture(this._lastX, this._lastY);
+            this._piece.decapture(this._lastX, this._lastY);
+            break;
         case 'promote':
-            piece.demote();
+            this._piece.demote();
+            break;
         case 'demote':
-            piece.promote();
+            this._piece.promote();
+            break;
     }
+};
+
+//=============================================================================
+// ** Game_ActionList
+//=============================================================================
+
+function Game_ActionList() {
+    this.initialize.apply(this, arguments);
+}
+
+Object.defineProperties(Game_ActionList.prototype, {
+    actions: { get: function() { return this._actions; } },
+    length: { get: function() { return this._actions.length; } },
+});
+
+Game_ActionList.prototype.initialize = function(piece, destX, destY) {
+    this._actions = [];
+    this._createActions(piece, destX, destY);
+};
+
+Game_ActionList.prototype.isValid = function() {
+    return this._actions.length > 0;
+};
+
+Game_ActionList.prototype.addAction = function(action) {
+    this._actions.push(action);
+};
+
+Game_ActionList.prototype._createActions = function(piece, destX, destY) {
+    if (piece.x < 0 && piece.y < 0) {
+        this._createDropActions(piece, destX, destY);
+    } else {
+        this._createMoveActions(piece, destX, destY);
+    }
+};
+
+Game_ActionList.prototype._createDropActions = function(piece, destX, destY) {
+    if (BattleManager.board.pieceAt(destX, destY)) {
+        return;
+    }
+
+    this._actions.push(new Game_Action(piece, 'drop', destX, destY));
+};
+
+Game_ActionList.prototype._createMoveActions = function(piece, destX, destY) {
+    if (!piece.canMove(destX, destY)) {
+        return;
+    }
+
+    var capturedPiece = BattleManager.board.pieceAt(destX, destY);
+    if (capturedPiece) {
+        if (capturedPiece.promoted) {
+            this._actions.push(new Game_Action(capturedPiece, 'demote'));
+        }
+        this._actions.push(new Game_Action(capturedPiece, 'capture'));
+    }
+
+    this._actions.push(new Game_Action(piece, 'move', destX, destY));
 };
 
 //=============================================================================
@@ -60,6 +127,10 @@ Object.defineProperties(Game_Board.prototype, {
 
 Game_Board.prototype.initialize = function() {
     this._createPieces();
+};
+
+Game_Board.prototype.isValid = function(x, y) {
+    return (x >= 0 && x < 9 && y >= 0 && y < 9);
 };
 
 Game_Board.prototype.pieceAt = function(x, y) {
@@ -153,7 +224,29 @@ Game_Piece.prototype.screenY = function() {
     } else {
         return this._y * 64 + (Game.WINDOW_HEIGHT - 576) / 2;
     }
-}
+};
+
+Game_Piece.prototype.canMove = function(x, y) {
+    var range = this._getMovementRange();
+    for (var i = 0; i < range.length; i++) {
+        if (x == range[i][0] && y == range[i][1]) {
+            return true;
+        }
+    }
+    return false;
+};
+
+Game_Piece.prototype.canPromote = function(y) {
+    if (this._promoted) {
+        return false;
+    }
+
+    if (this._alliance == 0) {
+        return y >= 6;
+    } else {
+        return y <= 2;
+    }
+};
 
 Game_Piece.prototype.moveTo = function(x, y) {
     this._x = x;
@@ -178,7 +271,16 @@ Game_Piece.prototype.demote = function() {
     this._promoted = false;
 };
 
-Game_Piece.prototype.getMovementRange = function() {
+Game_Piece.prototype._switchAlliance = function() {
+    this._alliance = (this._alliance + 1) % 2;
+};
+
+Game_Piece.prototype._forward = function() {
+    return (this._alliance == 0 ? -1 : 1);
+};
+
+
+Game_Piece.prototype._getMovementRange = function() {
     if (this._id == 0) {
         var range = this._movementRangeForOu();
     } else if (this._id == 1) {
@@ -208,14 +310,6 @@ Game_Piece.prototype.getMovementRange = function() {
     }
 
     return range;
-};
-
-Game_Piece.prototype._switchAlliance = function() {
-    this._alliance = (this._alliance + 1) % 2;
-};
-
-Game_Piece.prototype._forward = function() {
-    return (this._alliance == 0 ? -1 : 1);
 };
 
 Game_Piece.prototype._movementRangeForOu = function() {

@@ -8,8 +8,14 @@ function BattleManager() {
 
 BattleManager.init = function() {
     this.board = new Game_Board();
+    this.turn = 0;
     this._actionQueue = [];
     this._actionIndex = 0;
+};
+
+BattleManager.requestAction = function(actionList) {
+    this.queueAction(actionList);
+    this.performNextAction();
 };
 
 BattleManager.queueAction = function(actionList) {
@@ -19,7 +25,7 @@ BattleManager.queueAction = function(actionList) {
 BattleManager.performNextAction = function() {
     var actionList = this._actionQueue[this._actionIndex];
     for (var i = 0; i < actionList.length; i++) {
-        actionList[i].execute();
+        actionList.actions[i].execute();
     }
     this._actionIndex += 1;
 };
@@ -27,7 +33,11 @@ BattleManager.performNextAction = function() {
 BattleManager.undoPreviousAction = function() {
     var actionList = this._actionQueue[this._actionIndex];
     for (var i = actionList.length - 1; i >= 0; i--) {
-        actionList[i].undo();
+        actionList[i].actions[i].undo();
     }
     this._actionIndex -= 1;
+};
+
+BattleManager.advanceTurn = function() {
+    this.turn = (this.turn + 1) % 2;
 };

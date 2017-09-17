@@ -65,11 +65,13 @@ function Game_ActionList() {
 
 Object.defineProperties(Game_ActionList.prototype, {
     actions: { get: function() { return this._actions; } },
+    piece: { get: function() { return this._piece; } },
     length: { get: function() { return this._actions.length; } },
 });
 
 Game_ActionList.prototype.initialize = function(piece, destX, destY) {
     this._actions = [];
+    this._piece = piece;
     this._createActions(piece, destX, destY);
 };
 
@@ -391,4 +393,30 @@ Game_Piece.prototype._movementRangeForFu = function() {
 
 Game_Piece.prototype._movementRangeForKyo = function() {
     return this._rangeInDirection(this._x, this._y, 0, this._forward());
+};
+
+Game_Piece.prototype._nodesInDirection = function(sx, sy, xDir, yDir) {
+    var range = [];
+
+    var i = xDir;
+    var j = yDir;
+    
+    while (true) {
+        if (!BattleManager.board.isValid(sx + i, sy + j)) {
+            break;
+        }
+        range.push([sx + i, sy + j]);
+        if (BattleManager.board.pieceAt(sx + i, sy + j)) {
+            break; 
+        }
+        
+        i += xDir;
+        j += yDir;
+    }
+
+    return range;
+};
+
+Game_Piece.prototype._rangeInDirection = function(sx, sy, xDir, yDir) {
+    return this._nodesInDirection(sx, sy, xDir, yDir);
 };

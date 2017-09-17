@@ -64,21 +64,8 @@ Sprite_Piece.prototype._onButtonDown = function() {
         var destX = Math.floor(localX / 64);
         var destY = Math.floor(localY / 64);
 
-        var actionList = new Game_ActionList(piece, destX, destY);
-        if (actionList.isValid()) {
-            if (piece.canPromote(destX, destY)) {
-                /* TODO:
-                if (Dialog_Promotion.show(piece)) {
-                    var action = new Game_Action(piece, 'promote');
-                    this.actionList.addAction(action)
-                }
-                */
-            }
-
-            BattleManager.requestAction(actionList);
-        }
-
-        this.parentObj.alignToObject();
+        var actionList = new Game_ActionList(piece, destX, destY)
+        Game.processEvent(actionList, piece.canPromote(destX, destY));
         this.parentObj.deactivate();
     } else {
         this.x = mousePosition.x - this.width / 2;

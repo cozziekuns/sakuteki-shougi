@@ -52,6 +52,30 @@ Game.pushToFront = function(sprite) {
     this.context.stage.addChildAt(sprite, this.context.stage.children.length);
 };
 
+Game.processEvent = function(actionList, canPromote) {
+    if (actionList.isValid()) {
+        if (canPromote) {
+            /* TODO:
+            if (Dialog_Promotion.show(piece)) {
+                var action = new Game_Action(piece, 'promote');
+                this.actionList.addAction(action)
+            }
+            */
+        }
+
+        BattleManager.queueAction(actionList);
+        BattleManager.performNextAction();
+    }
+
+    Game.alignAllSprites();
+};
+
+Game.alignAllSprites = function() {
+    for (var i = 0; i < this._pieceSprites.length; i++) {
+        this._pieceSprites[i].alignToObject();
+    }
+};
+
 Game.promptForPromotion = function(piece) {
     // Do nothing for now...
 };

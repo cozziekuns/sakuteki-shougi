@@ -17,34 +17,9 @@ Game.preloadAllAssets = function() {
 
 Game.run = function() {
     BattleManager.init();
-    Game.createContext();
-    Game.createBoard();
-    Game.createPieces();
-};
-
-Game.createContext = function() {
-    this.context = new PIXI.Application(
-        this.WINDOW_WIDTH,
-        this.WINDOW_HEIGHT, 
-        {backgroundColor: 0x1099bb},
-    );
-
-    document.body.appendChild(this.context.view);
-};
-
-Game.createBoard = function() {
-    this._boardSprite = new PIXI.Sprite.fromImage('img/board.png');
-    this._boardSprite.x = (Game.WINDOW_WIDTH - 576) / 2;
-    this._boardSprite.y = (Game.WINDOW_HEIGHT - 576) / 2;
-    this.context.stage.addChild(this._boardSprite);
-};
-
-Game.createPieces = function() {
-    this._pieceSprites = [];
-    for (var i = 0; i < BattleManager.board.pieces.length; i++) {
-        var sprite = new Sprite_Piece(BattleManager.board.pieces[i]);
-        this._pieceSprites.push(sprite);
-    }
+    Game._createContext();
+    Game._createBoard();
+    Game._createPieces();
 };
 
 Game.pushToFront = function(sprite) {
@@ -52,21 +27,32 @@ Game.pushToFront = function(sprite) {
     this.context.stage.addChildAt(sprite, this.context.stage.children.length);
 };
 
-Game.processEvent = function(actionList, canPromote) {
-    if (actionList.isValid()) {
-        if (canPromote) {
-            /* TODO:
-            if (Dialog_Promotion.show(piece)) {
-                var action = new Game_Action(piece, 'promote');
-                this.actionList.addAction(action)
-            }
-            */
-        }
+Game.closePromotionDialog = function() {
+    this.context.stage.removeChild(this._backgroundSprite);
+    this.context.stage.removeChild(this._dialogSprite.sprite);
+};
 
-        BattleManager.queueAction(actionList);
-        BattleManager.performNextAction();
+Game.processEvent = function(actionList, checkForPromote) {
+    if (actionList.isValid()) {
+        this._actionList = actionList;
+        if (checkForPromote) {
+            Game._promptForPromotion(actionList.piece);
+            return;
+        }
+        Game.performAction(false);
     }
 
+    Game.alignAllSprites();
+};
+
+Game.performAction = function(withPromote) {
+    if (withPromote) {
+        var action = new Game_Action(this._actionList.piece, 'promote');
+        this._actionList.addAction(action);
+    }
+
+    BattleManager.queueAction(this._actionList);
+    BattleManager.performNextAction();
     Game.alignAllSprites();
 };
 
@@ -76,8 +62,54 @@ Game.alignAllSprites = function() {
     }
 };
 
-Game.promptForPromotion = function(piece) {
-    // Do nothing for now...
+Game._promptForPromotion = function(piece) {
+    this._createBackgroundSprite();
+    this._createPromotionDialog(piece);
+};
+
+Game._createContext = function() {
+    this.context = new PIXI.Application(
+        this.WINDOW_WIDTH,
+        this.WINDOW_HEIGHT, 
+        {backgroundColor: 0x10A0C0},
+    );
+
+    document.body.appendChild(this.context.view);
+};
+
+Game._createBoard = function() {
+    this._boardSprite = new PIXI.Sprite.fromImage('img/board.png');
+    this._boardSprite.x = (Game.WINDOW_WIDTH - 576) / 2;
+    this._boardSprite.y = (Game.WINDOW_HEIGHT - 576) / 2;
+    this.context.stage.addChild(this._boardSprite);
+};
+
+Game._createPieces = function() {
+    this._pieceSprites = [];
+    for (var i = 0; i < BattleManager.board.pieces.length; i++) {
+        var sprite = new Sprite_Piece(BattleManager.board.pieces[i]);
+        this._pieceSprites.push(sprite);
+    }
+};
+
+Game._createBackgroundSprite = function() {
+    this._backgroundSprite = new PIXI.Graphics();
+    this._backgroundSprite.interactive = true;
+    this._backgroundSprite.alpha = 0.75;
+
+    this._backgroundSprite.beginFill(0xA0A0A0);
+    this._backgroundSprite.drawRect(0, 0, this.WINDOW_WIDTH, this.WINDOW_HEIGHT);
+    this._backgroundSprite.endFill();
+
+    var back = this.context.stage.children.length;
+    this.context.stage.addChildAt(this._backgroundSprite, back);
+};
+
+Game._createPromotionDialog = function(piece) {
+    var x = (Game.WINDOW_WIDTH - 192) / 2;
+    var y = (Game.WINDOW_HEIGHT - 160) / 2
+
+    this._dialogSprite = new Sprite_DialogPromotion(x, y, 192, 160, piece);
 };
 
 //=============================================================================

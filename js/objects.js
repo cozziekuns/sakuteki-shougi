@@ -244,10 +244,26 @@ Game_Piece.prototype.canPromote = function(y) {
     }
 
     if (this._alliance == 0) {
-        return y >= 6;
-    } else {
         return y <= 2;
+    } else {
+        return y >= 6;
     }
+};
+
+Game_Piece.prototype.mustPromote = function(x, y) {
+    if (!this.canPromote(y)) {
+        return false;
+    }
+
+    var oldX = this.x;
+    var oldY = this.y;
+
+
+    this.moveTo(x, y);
+    var promote = this.getBaseMovementRange().length == 0;
+    this.moveTo(oldX, oldY);
+
+    return promote;
 };
 
 Game_Piece.prototype.moveTo = function(x, y) {
@@ -281,8 +297,7 @@ Game_Piece.prototype._forward = function() {
     return (this._alliance == 0 ? -1 : 1);
 };
 
-
-Game_Piece.prototype._getMovementRange = function() {
+Game_Piece.prototype.getBaseMovementRange = function() {
     if (this._id == 0) {
         var range = this._movementRangeForOu();
     } else if (this._id == 1) {
@@ -302,11 +317,19 @@ Game_Piece.prototype._getMovementRange = function() {
     }
 
     for (var i = range.length - 1; i >= 0; i--) {
-        var occupyPiece = BattleManager.board.pieceAt(range[i][0], range[i][1]);
-        var blocked = (occupyPiece && occupyPiece.alliance == this._alliance);
-        var valid = BattleManager.board.isValid(range[i][0], range[i][1]);
+        if (!BattleManager.board.isValid(range[i][0], range[i][1])) {
+            range.splice(i, 1);
+        }
+    }
 
-        if (blocked || !valid) {
+    return range;
+};
+
+Game_Piece.prototype._getMovementRange = function() {
+    var range = this.getBaseMovementRange();
+    for (var i = range.length - 1; i >= 0; i--) {
+        var occupyPiece = BattleManager.board.pieceAt(range[i][0], range[i][1]);
+        if (occupyPiece && occupyPiece.alliance == this._alliance) {
             range.splice(i, 1);
         }
     }

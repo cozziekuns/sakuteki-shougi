@@ -148,7 +148,7 @@ Sprite_Button.prototype.drawText = function(text) {
 
     var textSprite = new PIXI.Text(this._text, {
         fill: this.textFill,
-        fontFamily: 'Calibri',
+        fontFamily: 'Helvetica',
         fontSize: 24,
     });
 
@@ -235,12 +235,12 @@ Sprite_Dialog.prototype._drawTitleBack = function(width) {
 Sprite_Dialog.prototype._drawTitleText = function(width) {
     var textSprite = new PIXI.Text(this._titleText(), {
         fill: ['#FFFFFF'],
-        fontFamily: 'Calibri',
+        fontFamily: 'Helvetica',
         fontSize: 24,
     });
 
     textSprite.x = (width - textSprite.width) / 2;
-    textSprite.y = 4;
+    textSprite.y = (32 - textSprite.height) / 2;
 
     this._sprite.addChild(textSprite);
 };

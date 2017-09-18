@@ -23,18 +23,12 @@ BattleManager.queueAction = function(actionList) {
 };
 
 BattleManager.performNextAction = function() {
-    var actionList = this._actionQueue[this._actionIndex];
-    for (var i = 0; i < actionList.length; i++) {
-        actionList.actions[i].execute();
-    }
+    this._actionQueue[this._actionIndex].execute();
     this._actionIndex += 1;
 };
 
 BattleManager.undoPreviousAction = function() {
-    var actionList = this._actionQueue[this._actionIndex];
-    for (var i = actionList.length - 1; i >= 0; i--) {
-        actionList[i].actions[i].undo();
-    }
+    this._actionQueue[this._actionIndex].undo();
     this._actionIndex -= 1;
 };
 

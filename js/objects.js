@@ -66,7 +66,6 @@ function Game_ActionList() {
 Object.defineProperties(Game_ActionList.prototype, {
     actions: { get: function() { return this._actions; } },
     piece: { get: function() { return this._piece; } },
-    length: { get: function() { return this._actions.length; } },
 });
 
 Game_ActionList.prototype.initialize = function(piece, destX, destY) {
@@ -81,6 +80,18 @@ Game_ActionList.prototype.isValid = function() {
 
 Game_ActionList.prototype.addAction = function(action) {
     this._actions.push(action);
+};
+
+Game_ActionList.prototype.execute = function() {
+    for (var i = 0; i < this._actions.length; i++) {
+        this._actions[i].execute();
+    }
+};
+
+Game_ActionList.prototype.undo = function() {
+    for (var i = this._actions.length - 1; i >= 0; i--) {
+        this._actions[i].undo();
+    }
 };
 
 Game_ActionList.prototype._createActions = function(piece, destX, destY) {

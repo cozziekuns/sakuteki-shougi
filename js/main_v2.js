@@ -20,6 +20,7 @@ Game.run = function() {
     Game._createContext();
     Game._createBoard();
     Game._createPieces();
+    Game._createCountSprites();
 };
 
 Game.pushToFront = function(sprite) {
@@ -60,6 +61,8 @@ Game.alignAllSprites = function() {
     for (var i = 0; i < this._pieceSprites.length; i++) {
         this._pieceSprites[i].alignToObject();
     }
+    this._leftCountSprite.refresh();
+    this._rightCountSprite.refresh();
 };
 
 Game._promptForPromotion = function(piece) {
@@ -90,6 +93,11 @@ Game._createPieces = function() {
         var sprite = new Sprite_Piece(BattleManager.board.pieces[i]);
         this._pieceSprites.push(sprite);
     }
+};
+
+Game._createCountSprites = function() {
+    this._leftCountSprite = new Sprite_PieceCount(0);
+    this._rightCountSprite = new Sprite_PieceCount(1);
 };
 
 Game._createBackgroundSprite = function() {

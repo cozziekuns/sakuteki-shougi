@@ -95,15 +95,17 @@ Game_ActionList.prototype.undo = function() {
 };
 
 Game_ActionList.prototype._createActions = function(piece, destX, destY) {
-    if (piece.x < 0 && piece.y < 0) {
-        this._createDropActions(piece, destX, destY);
-    } else {
+    if (piece.onBoard()) {
         this._createMoveActions(piece, destX, destY);
+    } else {
+        this._createDropActions(piece, destX, destY);
     }
 };
 
 Game_ActionList.prototype._createDropActions = function(piece, destX, destY) {
-    if (BattleManager.board.pieceAt(destX, destY)) {
+    var valid = BattleManager.board.isValid(destX, destY);
+    var blocked = BattleManager.board.pieceAt(destX, destY);
+    if (!valid || blocked) {
         return;
     }
 
@@ -154,6 +156,20 @@ Game_Board.prototype.pieceAt = function(x, y) {
         }
     }
     return null;
+};
+
+Game_Board.prototype.capturedPiecesCount = function(id, alliance) {
+    var count = 0;
+
+    for (var i = 0; i < this._pieces.length; i++) {
+        var piece = this._pieces[i];
+        if (piece.id != id || piece.alliance != alliance || piece.onBoard()) {
+            continue;
+        }
+        count++;
+    }
+
+    return count;
 };
 
 Game_Board.prototype._createPieces = function() {
@@ -225,7 +241,11 @@ Game_Piece.prototype.initialize = function(id, alliance) {
 
 Game_Piece.prototype.screenX = function() {
     if (this._x < 0) {
-
+        if (this._alliance == 0) {
+            return (Game.WINDOW_WIDTH - 576) / 2 - 160;
+        } else {
+            return (Game.WINDOW_WIDTH - 576) / 2 + 576 + 96;
+        }
     } else {
         return this._x * 64 + (Game.WINDOW_WIDTH - 576) / 2;
     }
@@ -233,10 +253,14 @@ Game_Piece.prototype.screenX = function() {
 
 Game_Piece.prototype.screenY = function() {
     if (this._y < 0) {
-
+        return (Game.WINDOW_HEIGHT - 576) / 2 + this._id * 64;
     } else {
         return this._y * 64 + (Game.WINDOW_HEIGHT - 576) / 2;
     }
+};
+
+Game_Piece.prototype.onBoard = function() {
+    return this._x >= 0 && this._y >= 0;
 };
 
 Game_Piece.prototype.canMove = function(x, y) {

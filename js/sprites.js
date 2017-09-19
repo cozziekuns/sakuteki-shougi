@@ -65,11 +65,12 @@ Sprite_Piece.prototype._onButtonDown = function() {
         var actionList = new Game_ActionList(piece, destX, destY);
 
         var checkForPromote = false;
-        if (piece.mustPromote(destX, destY)) {
-            console.log('please');
-            actionList.addAction(new Game_Action(piece, 'promote'));
-        } else if (piece.canPromote(destY)) {
-            checkForPromote = true;
+        if (piece.onBoard()) {
+            if (actionList.isValid() && piece.mustPromote(destX, destY)) {
+                actionList.addAction(new Game_Action(piece, 'promote'));
+            } else if (piece.canPromote(destY)) {
+                checkForPromote = true;
+            }
         }
 
         Game.processEvent(actionList, checkForPromote);
@@ -93,6 +94,54 @@ Sprite_Piece.prototype._onMouseMove = function() {
     this.y = mousePosition.y - this.height / 2;
 };
 
+//=============================================================================
+// ** Sprite_PieceCount
+//=============================================================================
+
+function Sprite_PieceCount() {
+    this.initialize.apply(this, arguments);
+}
+
+Sprite_PieceCount.prototype.initialize = function(alliance) {
+    this._alliance = alliance;
+    this._createSprite();
+    Game.context.stage.addChild(this._sprite);
+};
+
+Sprite_PieceCount.prototype._createSprite = function() {
+    var xOffset = (this._alliance == 0 ? -96 : 576 + 80);
+
+    this._sprite = new PIXI.Graphics();
+    this._sprite.x = (Game.WINDOW_WIDTH - 576) / 2 + xOffset;
+    this._sprite.y = (Game.WINDOW_HEIGHT - 576) / 2 + 32;
+};
+
+Sprite_PieceCount.prototype.refresh = function() {
+    for (var i = this._sprite.children.length - 1; i >= 0; i--) {
+        this._sprite.removeChild(this._sprite.children[i]);
+    }
+
+    for (var i = 0; i < 8; i++) {
+        var count = BattleManager.board.capturedPiecesCount(i, this._alliance);
+        if (count == 0) {
+            continue;
+        }
+
+        this.drawText(count.toString(), 0, i * 64);
+    }
+};
+
+Sprite_PieceCount.prototype.drawText = function(text, x, y) {
+    var textSprite = new PIXI.Text(text, {
+        fill: ['#FFFFFF'],
+        fontFamily: 'Helvetica',
+        fontSize: 24,
+    });
+    textSprite.x = x;
+    textSprite.y = y;
+    
+    this._sprite.addChild(textSprite);
+};
 
 //=============================================================================
 // ** Sprite_Button

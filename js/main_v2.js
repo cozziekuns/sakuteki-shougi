@@ -21,11 +21,20 @@ Game.run = function() {
     Game._createBoard();
     Game._createPieces();
     Game._createCountSprites();
+    BattleManager.advanceTurn();
 };
 
 Game.pushToFront = function(sprite) {
     this.context.stage.removeChild(sprite);
     this.context.stage.addChildAt(sprite, this.context.stage.children.length);
+};
+
+Game.showWinDialog = function() {
+    alert('You win!');
+};
+
+Game.showLossDialog = function() {
+    alert('You lose...');
 };
 
 Game.closePromotionDialog = function() {
@@ -54,6 +63,7 @@ Game.performAction = function(withPromote) {
 
     BattleManager.queueAction(this._actionList);
     BattleManager.performNextAction();
+    BattleManager.endTurn();
     Game.alignAllSprites();
 };
 

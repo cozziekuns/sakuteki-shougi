@@ -129,6 +129,68 @@ Game_ActionList.prototype._createMoveActions = function(piece, destX, destY) {
 };
 
 //=============================================================================
+// ** Game_AI
+//=============================================================================
+
+function Game_AI() {
+    this.initialize.apply(this, arguments);
+};
+
+Object.defineProperties(Game_AI.prototype, {
+    alliance: { get: function() { return this._alliance; } },
+});
+
+Game_AI.prototype.initialize = function(alliance) {
+    this._alliance = alliance;
+};
+
+Game_AI.prototype.takeTurn = function() {
+    var moves = this._getAllActions();
+    var action = moves[Math.floor(Math.random() * moves.length)];
+    Game.processEvent(action, false);
+};
+
+Game_AI.prototype._getAllActions = function() {
+    var moves = [];
+    for (var y = 0; y < 9; y++) {
+        for (var x = 0; x < 9; x++) {
+            for (var i = 0; i < BattleManager.board.pieces.length; i++) {
+                var piece = BattleManager.board.pieces[i];
+                if (piece.alliance !== this._alliance) {
+                    continue;
+                }
+                
+                moves = moves.concat(this._getPossibleActions(piece, x, y));
+            }
+        }
+    }
+    
+    return moves;
+};
+
+Game_AI.prototype._getPossibleActions = function(piece, destX, destY) {
+    var actions = [];
+
+    var actionList = new Game_ActionList(piece, destX, destY);
+    if (!actionList.isValid()) {
+        return actions;
+    }
+
+    if (piece.onBoard()) {
+        if (piece.mustPromote(destX, destY)) {
+            actionList.addAction(new Game_Action(piece, 'promote'));
+        } else if (piece.canPromote(destY)) {
+            var promoteActionList = new Game_ActionList(piece, destX, destY);
+            promoteActionList.addAction(new Game_Action(piece, 'promote'));
+            actions.push(promoteActionList);
+        }
+    }
+
+    actions.push(actionList);
+    return actions;
+};
+
+//=============================================================================
 // ** Game_Board
 //=============================================================================
 

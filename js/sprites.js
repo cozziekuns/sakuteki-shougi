@@ -55,8 +55,9 @@ Sprite_Piece.prototype._updateFrame = function() {
 
 Sprite_Piece.prototype._onButtonDown = function() {
     var mousePosition = Game.context.renderer.plugins.interaction.mouse.global;
+    var piece = this.parentObj.object;
+
     if (this.parentObj.isActive()) {
-        var piece = this.parentObj.object;
         var localX = (mousePosition.x - (Game.WINDOW_WIDTH - 576) / 2);
         var localY = (mousePosition.y - (Game.WINDOW_HEIGHT - 576) / 2);
         var destX = Math.floor(localX / 64);
@@ -65,8 +66,8 @@ Sprite_Piece.prototype._onButtonDown = function() {
         var actionList = new Game_ActionList(piece, destX, destY);
 
         var checkForPromote = false;
-        if (piece.onBoard()) {
-            if (actionList.isValid() && piece.mustPromote(destX, destY)) {
+        if (actionList.isValid() && piece.onBoard()) {
+            if (piece.mustPromote(destX, destY)) {
                 actionList.addAction(new Game_Action(piece, 'promote'));
             } else if (piece.canPromote(destY)) {
                 checkForPromote = true;
@@ -76,6 +77,10 @@ Sprite_Piece.prototype._onButtonDown = function() {
         Game.processEvent(actionList, checkForPromote);
         this.parentObj.deactivate();
     } else {
+        if (!BattleManager.isPlayerTurn() || BattleManager.turn != piece.alliance) {
+            return;
+        }
+
         this.x = mousePosition.x - this.width / 2;
         this.y = mousePosition.y - this.height / 2;
         

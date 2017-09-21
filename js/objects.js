@@ -6,6 +6,12 @@ function Game_Action() {
     this.initialize.apply(this, arguments);
 }
 
+Object.defineProperties(Game_Action.prototype, {
+    action: { get: function() { return this._action; } },
+    destX: { get: function() { return this._destX; } },
+    destY: { get: function() { return this._destY; } },
+});
+
 Game_Action.prototype.initialize = function(piece, action, destX, destY) {
     this._piece = piece;
     this._action = action;
@@ -13,6 +19,11 @@ Game_Action.prototype.initialize = function(piece, action, destX, destY) {
     this._destY = destY;
     this._lastX = piece.x;
     this._lastY = piece.y;
+};
+
+Game_Action.prototype.updateDestination = function(destX, destY) {
+    this._destX = destX;
+    this._destY = destY;
 };
 
 Game_Action.prototype.execute = function() {
@@ -78,6 +89,15 @@ Game_ActionList.prototype.isValid = function() {
     return this._actions.length > 0;
 };
 
+Game_ActionList.prototype.canPromote = function() {
+    var moveAction = this._getMoveAction();
+    if (moveAction === null) {
+        return false;
+    }
+
+    return this._piece.canPromote(moveAction.destX, moveAction.destY);
+};
+
 Game_ActionList.prototype.addAction = function(action) {
     this._actions.push(action);
 };
@@ -117,15 +137,87 @@ Game_ActionList.prototype._createMoveActions = function(piece, destX, destY) {
         return;
     }
 
-    var capturedPiece = BattleManager.board.pieceAt(destX, destY);
+    this._actions.push(new Game_Action(piece, 'move', destX, destY));
+};
+
+Game_ActionList.prototype._getMoveAction = function() {
+    for (var i = 0; i < this._actions.length; i++) {
+        var action = this._actions[i];
+        if (action.action == 'move') {
+            return action;
+        }
+    }
+    return null;
+};
+
+Game_ActionList.prototype.prepare = function() {
+    this._prepareRookMovement();
+    this._prepareCapture();
+    this._prepareForcePromote();
+};
+
+Game_ActionList.prototype._prepareRookMovement = function() {
+    if (this._piece.id !== 1) {
+        return;
+    }
+
+    var moveAction = this._getMoveAction();
+    if (moveAction === null) {
+        return;
+    }
+
+    var xDiff = moveAction.destX - this._piece.x;
+    var yDiff = moveAction.destY - this._piece.y;
+
+    if (xDiff !== 0 && Math.abs(xDiff) > 1) {
+        var increment = xDiff / Math.abs(xDiff);
+        for (var i = 0; Math.abs(i) < Math.abs(xDiff - 2); i = i + increment) {
+            var forwardX = this._piece.x + i + increment;
+            if (BattleManager.board.pieceAt(forwardX, this._piece.y)) {
+                moveAction.updateDestination(this._piece.x + i, this._piece.y);
+                break;
+            }
+        }
+    } else if (Math.abs(yDiff) > 1) {
+        var increment = yDiff / Math.abs(yDiff);
+        for (var i = 0; Math.abs(i) < Math.abs(yDiff - 2); i = i + increment) {
+            var forwardY = this._piece.y + i + increment;
+            if (BattleManager.board.pieceAt(this._piece.x, forwardY)) {
+                moveAction.updateDestination(this._piece.x, this._piece.y + i);
+                break;
+            }
+        }
+    }
+};
+
+Game_ActionList.prototype._prepareCapture = function() {
+    var moveAction = this._getMoveAction();
+    if (moveAction === null) {
+        return;
+    }
+
+    var capturedPiece = BattleManager.board.pieceAt(
+        moveAction.destX, 
+        moveAction.destY,
+    );
+
     if (capturedPiece) {
         if (capturedPiece.promoted) {
             this._actions.push(new Game_Action(capturedPiece, 'demote'));
         }
         this._actions.push(new Game_Action(capturedPiece, 'capture'));
     }
+}
 
-    this._actions.push(new Game_Action(piece, 'move', destX, destY));
+Game_ActionList.prototype._prepareForcePromote = function() {
+    var moveAction = this._getMoveAction();
+    if (moveAction === null) {
+        return;
+    }
+
+    if (this._piece.mustPromote(moveAction.destX, moveAction.destY)) {
+        this._actions.push(new Game_Action(this._piece, 'promote'));
+    }
 };
 
 //=============================================================================
@@ -159,7 +251,7 @@ Game_AI.prototype._getAllActions = function() {
                 if (piece.alliance !== this._alliance) {
                     continue;
                 }
-                
+
                 moves = moves.concat(this._getPossibleActions(piece, x, y));
             }
         }
@@ -279,6 +371,58 @@ Game_Board.prototype._placePieceStarting = function(piece, x, y) {
 };
 
 //=============================================================================
+// ** Game_Fog
+//=============================================================================
+
+function Game_Fog() {
+    this.initialize.apply(this, arguments);
+}
+
+Object.defineProperties(Game_Fog.prototype, {
+    grid: { get: function() { return this._grid; } },
+    alliance: { get: function() { return this._alliance; } },
+});
+
+Game_Fog.prototype.initialize = function(alliance) {
+    this._alliance = alliance;
+    this._grid = [];
+};
+
+Game_Fog.prototype.isFog = function(x, y) {
+    return this._grid[y][x] == 0;
+};
+
+Game_Fog.prototype.refresh = function() {
+    this._emptyGrid();
+    this._populateFog();
+};
+
+Game_Fog.prototype._emptyGrid = function() {
+    this._grid.length = 0;
+    for (var y = 0; y < 9; y++) {
+        this._grid[y] = [];
+        for (var x = 0; x < 9; x++) {
+            this._grid[y][x] = 0;
+        }
+    }
+};
+
+Game_Fog.prototype._populateFog = function() {
+    for (var i = 0; i < BattleManager.board.pieces.length; i++) {
+        var piece = BattleManager.board.pieces[i];
+
+        if (piece.alliance !== this._alliance) {
+            continue;
+        }
+
+        var vision = piece.vision();
+        for (var j = 0; j < vision.length; j++) {
+            this._grid[vision[j][1]][vision[j][0]] = 1;
+        }
+    }   
+};
+
+//=============================================================================
 // ** Game_Piece
 //=============================================================================
 
@@ -355,7 +499,6 @@ Game_Piece.prototype.mustPromote = function(x, y) {
     var oldX = this.x;
     var oldY = this.y;
 
-
     this.moveTo(x, y);
     var promote = this.getBaseMovementRange().length == 0;
     this.moveTo(oldX, oldY);
@@ -386,14 +529,6 @@ Game_Piece.prototype.demote = function() {
     this._promoted = false;
 };
 
-Game_Piece.prototype._switchAlliance = function() {
-    this._alliance = (this._alliance + 1) % 2;
-};
-
-Game_Piece.prototype._forward = function() {
-    return (this._alliance == 0 ? -1 : 1);
-};
-
 Game_Piece.prototype.getBaseMovementRange = function() {
     if (this._id == 0) {
         var range = this._movementRangeForOu();
@@ -420,6 +555,63 @@ Game_Piece.prototype.getBaseMovementRange = function() {
     }
 
     return range;
+};
+
+Game_Piece.prototype.vision = function() {
+    if (this._x < 0 && this._y < 0) {
+        return [];
+    }
+
+    var vision = [[this._x, this._y]];
+
+    if (this._id == 0) {
+        vision = vision.concat(this._visionDiamond(3));
+    } else if (this._id == 1) {
+        if (this._promoted) {
+            vision.push([this._x - 4, this._y]);
+            vision.push([this._x + 4, this._y]);
+            vision.push([this._x, this._y - 4]);
+            vision.push([this._x, this._y + 4]);
+        }
+        vision = vision.concat(this._visionDiamond(3));
+    } else if (this._id == 2) {
+        vision = vision.concat(this._visionInDirection(this._x, this._y, -1, -1));
+        vision = vision.concat(this._visionInDirection(this._x, this._y, -1, 1));
+        vision = vision.concat(this._visionInDirection(this._x, this._y, 1, -1));
+        vision = vision.concat(this._visionInDirection(this._x, this._y, 1, 1));
+        if (this._promoted) {
+            vision = vision.concat(this._visionDiamond(1));
+        }
+    } else if (this._id == 3 || this._id == 4 || this._promoted) {
+        vision = vision.concat(this._visionDiamond(2));
+    } else if (this._id == 5) {
+        vision = vision.concat(this._visionDiamond(3));
+    } else if (this._id == 6) {
+        vision = vision.concat(
+            this._visionInDirection(this._x, this._y, 0, this._forward())
+        );
+    } else if (this._id == 7) {
+        vision.push([this._x - 1, this._y + this._forward()]);
+        vision.push([this._x, this._y + this._forward()]);
+        vision.push([this._x + 1, this._y + this._forward()]);
+        vision.push([this._x, this._y + this._forward() * 2]);
+    }
+
+    for (var i = vision.length - 1; i >= 0; i--) {
+        if (!BattleManager.board.isValid(vision[i][0], vision[i][1])) {
+            vision.splice(i, 1);
+        }
+    }
+
+    return vision;
+};
+
+Game_Piece.prototype._switchAlliance = function() {
+    this._alliance = (this._alliance + 1) % 2;
+};
+
+Game_Piece.prototype._forward = function() {
+    return (this._alliance == 0 ? -1 : 1);
 };
 
 Game_Piece.prototype._getMovementRange = function() {
@@ -515,9 +707,8 @@ Game_Piece.prototype._movementRangeForKyo = function() {
     return this._rangeInDirection(this._x, this._y, 0, this._forward());
 };
 
-Game_Piece.prototype._nodesInDirection = function(sx, sy, xDir, yDir) {
+Game_Piece.prototype._nodesInDirection = function(sx, sy, xDir, yDir, vision) {
     var range = [];
-
     var i = xDir;
     var j = yDir;
     
@@ -525,9 +716,13 @@ Game_Piece.prototype._nodesInDirection = function(sx, sy, xDir, yDir) {
         if (!BattleManager.board.isValid(sx + i, sy + j)) {
             break;
         }
+
         range.push([sx + i, sy + j]);
         if (BattleManager.board.pieceAt(sx + i, sy + j)) {
-            break; 
+            var fog = BattleManager.getFog(this._alliance);
+            if (vision || !fog.isFog(sx + i, sy + j)) {
+                break; 
+            }
         }
         
         i += xDir;
@@ -538,5 +733,24 @@ Game_Piece.prototype._nodesInDirection = function(sx, sy, xDir, yDir) {
 };
 
 Game_Piece.prototype._rangeInDirection = function(sx, sy, xDir, yDir) {
-    return this._nodesInDirection(sx, sy, xDir, yDir);
+    return this._nodesInDirection(sx, sy, xDir, yDir, false);
+};
+
+Game_Piece.prototype._visionInDirection = function(sx, sy, xDir, yDir) {
+    return this._nodesInDirection(sx, sy, xDir, yDir, true);
+};
+
+Game_Piece.prototype._visionDiamond = function(radius) {
+    var vision = []
+
+    for (var j = -radius; j <= radius; j++) {
+        for (var i = -radius; i <= radius; i++) {
+            if (i == 0 && j == 0 || Math.abs(i) + Math.abs(j) > radius) {
+                continue;
+            }
+            vision.push([this._x + i, this._y + j]);
+        }
+    }
+
+    return vision;
 };

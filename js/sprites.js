@@ -1,4 +1,41 @@
 //=============================================================================
+// ** Sprite_Fog
+//=============================================================================
+
+function Sprite_Fog() {
+    this.initialize.apply(this, arguments);
+};
+
+Object.defineProperties(Sprite_Fog.prototype, {
+    sprite: { get: function() { return this._sprite; } },
+});
+
+Sprite_Fog.prototype.initialize = function(x, y) {
+    this._x = x;
+    this._y = y;
+    this._createSprite();
+    Game.context.stage.addChild(this._sprite);
+};
+
+Sprite_Fog.prototype._createSprite = function() {
+    this._sprite = new PIXI.Graphics();
+    this._sprite.x = (Game.WINDOW_WIDTH - 576) / 2 + this._x * 64;
+    this._sprite.y = (Game.WINDOW_HEIGHT - 576) / 2 + this._y * 64;
+
+    this._sprite.beginFill(0x808080);
+    this._sprite.drawRect(0, 0, 64, 64);
+    this._sprite.endFill();
+};
+
+Sprite_Fog.prototype.refresh = function() {
+    if (BattleManager.playerFog.isFog(this._x, this._y)) {
+        this._sprite.alpha = 0.5;
+    } else {
+        this._sprite.alpha = 0;
+    }
+};
+
+//=============================================================================
 // ** Sprite_Piece
 //=============================================================================
 
@@ -66,12 +103,8 @@ Sprite_Piece.prototype._onButtonDown = function() {
         var actionList = new Game_ActionList(piece, destX, destY);
 
         var checkForPromote = false;
-        if (actionList.isValid() && piece.onBoard()) {
-            if (piece.mustPromote(destX, destY)) {
-                actionList.addAction(new Game_Action(piece, 'promote'));
-            } else if (piece.canPromote(destY)) {
-                checkForPromote = true;
-            }
+        if (actionList.isValid() && piece.onBoard() && piece.canPromote(destY)) {
+            checkForPromote = !piece.mustPromote(destX, destY);
         }
 
         Game.processEvent(actionList, checkForPromote);

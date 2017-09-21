@@ -1,928 +1,3 @@
-// 索敵将棋
-
-//=============================================================================
-// ** Shogi_Move
-//=============================================================================
-
-function Shogi_Move() {
-    this.initialize.apply(this, arguments);
-}
-
-Object.defineProperties(Shogi_Move.prototype, {
-    piece: { get: function() { return this._piece; } },
-    destX: { get: function() { return this._destX; } },
-    destY: { get: function() { return this._destY; } },
-});
-
-Shogi_Move.prototype.initialize = function(piece, destX, destY) {
-    this._piece = piece;
-    this._destX = destX;
-    this._destY = destY;
-};
-
-//=============================================================================
-// ** Shogi_Player
-//=============================================================================
-
-function Shogi_Player() {
-    this.initialize.apply(this, arguments);
-}
-
-Object.defineProperties(Shogi_Player.prototype, {
-    alliance: { get: function() { return this._alliance; } },
-    hand: { get: function() { return this._hand; } },
-});
-
-Shogi_Player.prototype.initialize = function(alliance) {
-    this._alliance = alliance;
-    this._hand = new Shogi_Hand(alliance);
-};
-
-Shogi_Player.prototype.isImpasse = function() {
-    var pieces = this.friendlyPieces();
-    for (var i = 0; i < pieces.length; i++) {
-        var piece = pieces[i];
-        if (piece.id == 0) {
-            return piece.x == 4 && piece.y == (this._alliance == 0 ? 0 : 8);
-        }
-    }
-    return false;
-};
-
-Shogi_Player.prototype.isOuCaptured = function() {
-    var pieces = this.friendlyPieces();
-    for (var i = 0; i < pieces.length; i++) {
-        if (pieces[i].id == 0) {
-            return false;
-        }
-    }
-    return true;
-};
-
-Shogi_Player.prototype.isNifu = function() {
-    var pawns = [];
-    var pieces = this.friendlyPieces();
-
-    for (var i = 0; i < pieces.length; i++) {
-        var piece = pieces[i];
-        if (piece.id == 7 && !piece.isPromoted()) {
-            pawns.push(piece);
-        }
-    }
-
-    var xPos = pawns.map(function(pawn) { return pawn.x; } ).sort();
-    for (var i = 0; i < xPos.length - 1; i++) {
-        if (xPos[i] == xPos[i + 1]) {
-            return true;
-        }    
-    }
-
-    return false;
-};
-
-Shogi_Player.prototype.executeMove = function(move) {
-    if (move.piece.x >= 0 && move.piece.y >= 0) {
-        Game.board.moveActivePiece(move.piece, move.destX, move.destY);
-    } else {
-        Game.board.dropActivePiece(move.piece, move.destX, move.destY);
-    }
-};
-
-Shogi_Player.prototype.capture = function(piece) {
-    piece.demote();
-    piece.setAlliance(this._alliance);
-    piece.moveTo(-1, -1);
-
-    this._hand.addPiece(piece);
-};
-
-Shogi_Player.prototype.friendlyPieces = function() {
-    var pieces = [];
-
-    for (var i = 0; i < Game.board.pieces.length; i++) {
-        var candidatePiece = Game.board.pieces[i];
-        if (candidatePiece.alliance == this._alliance) {
-            pieces.push(candidatePiece);
-        }
-    }
-
-    return pieces;
-}
-
-Shogi_Player.prototype.vision = function() {
-    var vision = [];
-    var pieces = this.friendlyPieces();
-
-    for (var i = 0; i < pieces.length; i++) {
-        vision = vision.concat(pieces[i].vision());
-    }
-
-    return vision;
-};
-
-
-Shogi_Player.prototype._getAllMoves = function() {
-    var moves = [];
-    var piecesOnBoard = this.friendlyPieces();
-    var piecesInHand = this._hand.pieces;
-
-    for (var i = 0; i < piecesOnBoard.length; i++) {
-        var range = piecesOnBoard[i].movementRange();
-        for (var j = 0; j < range.length; j++) {
-            var move = new Shogi_Move(piecesOnBoard[i], range[j][0], range[j][1]);
-            moves.push(move);
-        }
-    }
-
-    for (var k in piecesInHand) {
-        if (piecesInHand[k].length == 0) {
-            continue;
-        }
-        
-        var piece = piecesInHand[k][0];
-        for (var j = 0; j < 9; j++) {
-            for (var i = 0; i < 9; i++) {
-                if (Game.board.pieceAt(i, j)) {
-                    continue;
-                }
-                moves.push(new Shogi_Move(piece, i, j));
-            }
-        }
-    }
-    
-    return moves;
-};
-
-//=============================================================================
-// ** Shogi_Enemy
-//=============================================================================
-
-function Shogi_Enemy() {
-    this.initialize.apply(this, arguments);
-}
-
-Shogi_Enemy.prototype = Object.create(Shogi_Player.prototype);
-Shogi_Enemy.prototype.constructor = Shogi_Enemy;
-
-Shogi_Enemy.prototype.initialize = function(alliance) {
-    Shogi_Player.prototype.initialize.call(this, alliance);
-};
-
-Shogi_Enemy.prototype.selectMove = function() {
-    var moves = this._getAllMoves();
-    return moves[Math.floor(Math.random() * moves.length)];
-};
-
-//=============================================================================
-// ** Shogi_Board
-//=============================================================================
-
-function Shogi_Board() {
-    this.initialize.apply(this, arguments);
-}
-
-Shogi_Board.prototype.initialize = function() {
-    this._createBoard();
-    this._createSprite();
-    this._createPieces();
-    this._createFog();
-    this._createInteractiveEvents();
-};
-
-Shogi_Board.prototype.isFog = function(x, y) {
-    var vision = Game.currentPlayer.vision();
-    for (var i = 0; i < vision.length; i++) {
-        if (vision[i][0] == x && vision[i][1] == y) {
-            return false;
-        }
-    }
-    return true;
-};
-
-Shogi_Board.prototype.valid = function(x, y) {
-    return (x >= 0 && x < 9 && y >=0 && y < 9);
-};
-
-Shogi_Board.prototype.pieceAt = function(x, y) {
-    for (var i = 0; i < this.pieces.length; i++) {
-        if (this.pieces[i].x == x && this.pieces[i].y == y) {
-            return this.pieces[i];
-        }
-    }
-    return false;
-};
-
-Shogi_Board.prototype.activePiece = function() {
-    for (var i = 0; i < this.pieces.length; i++) {
-        if (this.pieces[i].active) {
-            return this.pieces[i];
-        }
-    }
-    return null;
-};
-
-Shogi_Board.prototype.pushToFront = function(pieceSprite) {
-    this.sprite.removeChild(pieceSprite);
-    this.sprite.addChildAt(pieceSprite, this.sprite.children.length);
-};
-
-Shogi_Board.prototype.pushToBack = function(pieceSprite) {
-    this.sprite.removeChild(pieceSprite);
-    this.sprite.addChildAt(pieceSprite, 0);
-};
-
-Shogi_Board.prototype.placePiece = function(piece) {
-    this.sprite.addChild(piece.sprite);
-    this.pieces.push(piece);
-};
-
-Shogi_Board.prototype.placePieceStarting = function(piece, x, y) {
-    var destX = Math.abs(8 * piece.alliance - x);
-    var destY = Math.abs(8 * piece.alliance - y);
-
-    piece.moveTo(destX, destY);
-    this.placePiece(piece);
-};
-
-Shogi_Board.prototype.removePiece = function(piece) {
-    piece.demote();
-    this.sprite.removeChild(piece.sprite);
-    this.pieces.splice(this.pieces.indexOf(piece), 1);
-};
-
-Shogi_Board.prototype.moveActivePiece = function(activePiece, destX, destY) {
-    var needEndTurn = false;
-
-    if (this._destinationIsValid(activePiece, destX, destY)) {
-        if (this.isFog(destX, destY)) {
-            var xDiff = destX - activePiece.x
-            var yDiff = destY - activePiece.y;
-            if (xDiff != 0) {
-                var xDir = xDiff / Math.abs(xDiff);
-                for (var i = xDir; i < xDiff; i = i + xDir) {
-                    if (this.pieceAt(activePiece.x + i, activePiece.y)) {
-                        destX = activePiece.x - xDir + i; 
-                    }
-                }
-            } else if (yDiff != 0) {
-                var yDir = yDiff / Math.abs(yDiff);
-                for (var i = yDir; Math.abs(i) < Math.abs(yDiff); i = i + yDir) {
-                    if (this.pieceAt(activePiece.x, activePiece.y + i)) {
-                        destY = activePiece.y - yDir + i;
-                    }
-                }
-            }
-        }
-
-        var candidatePiece = Game.board.pieceAt(destX, destY);
-        if (candidatePiece) {
-            Game.currentPlayer.capture(candidatePiece);
-            this.removePiece(candidatePiece);
-        };
-
-        activePiece.moveTo(destX, destY);
-        activePiece.promoteIfPossible();
-
-        this.updateFog();
-        needEndTurn = true;
-    }
-
-    activePiece.moveTo(activePiece.x, activePiece.y);
-    activePiece.deactivate();
-
-    if (needEndTurn) {
-        Game.endTurn();
-    }
-};
-
-Shogi_Board.prototype.dropActivePiece = function(activePiece, destX, destY) {
-    var candidatePiece = Game.board.pieceAt(destX, destY);
-
-    activePiece.deactivate();
-    if (candidatePiece) {
-        Game.currentPlayer.capture(activePiece);
-        this.removePiece(activePiece);
-        if (this.isFog(destX, destY)) {
-            Game.endTurn();
-        }
-    } else {
-        activePiece.moveTo(destX, destY);
-
-        this.updateFog();
-        Game.endTurn();
-    }
-};
-
-Shogi_Board.prototype.judgeWinLoss = function() {
-    if (Game.enemy.isOuCaptured() || Game.enemy.isNifu() || 
-        Game.player.isImpasse()) {
-        return 1;
-    } else if (Game.player.isOuCaptured() || Game.player.isNifu() ||
-               Game.enemy.isImpasse()) {
-        return 2;
-    } else {
-        return 0;
-    }
-};
-
-Shogi_Board.prototype.updateFog = function() {
-    this._fog.update();
-};
-
-Shogi_Board.prototype._destinationIsValid = function(activePiece, destX, destY) {
-    var range = activePiece.movementRange();
-    for (var i = 0; i < range.length; i++) {
-        if (destX == range[i][0] && destY == range[i][1]) {
-            return true;
-        }
-    }
-
-    return false;
-};
-
-Shogi_Board.prototype._createBoard = function() {
-    this.pieces = [];
-};
-
-Shogi_Board.prototype._createSprite = function() {
-    this.sprite = new PIXI.Sprite.fromImage('img/board.png');
-    this.sprite.x = (Game.WINDOW_WIDTH - 576) / 2;
-    this.sprite.y = (Game.WINDOW_HEIGHT - 576) / 2;
-
-    Game.context.stage.addChild(this.sprite);
-};
-
-Shogi_Board.prototype._createPieces = function() {
-    for (var alliance = 0; alliance < 2; alliance++) {
-        this._createPawns(alliance);
-        this._createMinorPieces(alliance);
-        this._createMajorPieces(alliance);
-    }
-};
-
-Shogi_Board.prototype._createPawns = function(alliance) {
-    for (var i = 0; i < 9; i++) {
-        var piece = new Shogi_Piece(7, alliance);
-        this.placePieceStarting(piece, i, 6);
-    }
-};
-
-Shogi_Board.prototype._createMinorPieces = function(alliance) {
-    for (var i = 6; i >= 3; i--) {
-        var piece = new Shogi_Piece(i, alliance);
-        var piece2 = new Shogi_Piece(i, alliance);
-
-        this.placePieceStarting(piece, 6 - i, 8);
-        this.placePieceStarting(piece2, 8 - (6 - i), 8);
-    }
-};
-
-Shogi_Board.prototype._createMajorPieces = function(alliance) {
-    var ou = new Shogi_Piece(0, alliance);
-    var hissha = new Shogi_Piece(1, alliance);
-    var kaku = new Shogi_Piece(2, alliance);
-    
-    this.placePieceStarting(ou, 4, 8);
-    this.placePieceStarting(hissha, 7, 7);
-    this.placePieceStarting(kaku, 1, 7);
-};
-
-Shogi_Board.prototype._createFog = function() {
-    this._fog = new Shogi_Fog(this);
-};
-
-Shogi_Board.prototype._createInteractiveEvents = function() {
-    this.sprite.interactive = true;
-    this.sprite.on('pointerdown', this._onClick);
-};
-
-Shogi_Board.prototype._onClick = function(event) {
-    if (!Game.currentPlayer || Game.currentPlayer instanceof Shogi_Enemy) {
-        return;
-    }
-
-    var coords = Game.input().mouse.getLocalPosition(Game.board.sprite);
-    var destX = Math.floor(coords['x'] / 64);
-    var destY = Math.floor(coords['y'] / 64);
-
-    var candidatePiece = Game.board.pieceAt(destX, destY);
-    var activePiece = Game.board.activePiece();
-
-    if (!Game.board.valid(destX, destY)) {
-        if (activePiece && activePiece.x < 0 && activePiece.y < 0) {
-            activePiece.deactivate();
-            Game.currentPlayer.capture(activePiece);
-            Game.board.removePiece(activePiece);
-        }
-        return;
-    }
-
-    if (activePiece) {
-        var move = new Shogi_Move(activePiece, destX, destY);
-        Game.currentPlayer.executeMove(move);
-    } else if (candidatePiece) {
-        if (candidatePiece.alliance != Game.currentPlayer.alliance) {
-            return;
-        }
-
-        candidatePiece.activate();
-        candidatePiece.x = coords['x'] - candidatePiece.sprite.width / 2;
-        candidatePiece.y = coords['y'] - candidatePiece.sprite.height / 2;
-    }
-};
-
-//=============================================================================
-// ** Shogi_Hand
-//=============================================================================
-
-function Shogi_Hand() {
-    this.initialize.apply(this, arguments);
-}
-
-Object.defineProperties(Shogi_Hand.prototype, {
-    alliance: { get: function() { return this._alliance; } },
-    pieces: { get: function() { return this._pieces; } },
-});
-
-Shogi_Hand.prototype.initialize = function(alliance) {
-    this._alliance = alliance;
-    this._pieces = {};
-    this._createSprite();
-    this._createInteractiveEvents();
-};
-
-Shogi_Hand.prototype.addPiece = function(piece) {
-    if (!(piece.id in this._pieces)) {
-        this._pieces[piece.id] = [];
-    }
-
-    this._putInPlace(piece);
-    this.sprite.addChildAt(piece.sprite, 0);
-    this._pieces[piece.id].push(piece);
-};
-
-Shogi_Hand.prototype.removePiece = function(piece) {
-    this.sprite.removeChild(piece.sprite);
-
-    var index = this._pieces[piece.id].indexOf(piece);
-    this._pieces[piece.id].splice(index, 1);
-
-    this._hoverPieceOverBoard(piece);
-};
-
-Shogi_Hand.prototype.pickUpPiece = function(pieceId) {
-    var pieces = this._pieces[pieceId]
-    if (!pieces || pieces.length == 0) {
-        return;
-    }
-
-    pieces[pieces.length - 1].activate();
-    this.removePiece(pieces[pieces.length - 1]);
-};
-
-Shogi_Hand.prototype._createSprite = function() {
-    var offset = (Game.board.sprite.x - 304) / 2;
-
-    this.sprite = new PIXI.Sprite.fromImage('img/hand.png');
-    if (this._alliance == 0) {
-        this.sprite.x = Game.WINDOW_WIDTH - offset - 304;
-        this.sprite.y = Game.WINDOW_HEIGHT - offset - 304;
-    } else {
-        this.sprite.x = offset;
-        this.sprite.y = offset;
-    }
-
-    this.sprite.parentObj = this;
-    Game.context.stage.addChild(this.sprite);
-};
-
-Shogi_Hand.prototype._createInteractiveEvents = function() {
-    this.sprite.interactive = true;
-    this.sprite.on('pointerdown', this._onClick);
-};
-
-Shogi_Hand.prototype._putInPlace = function(piece) {
-    var typeOffX = ((piece.id - 1) % 2) * 160;
-    var pieceOffX = this._pieces[piece.id].length * 24;
-    
-    if (piece.id == 7) {
-        pieceOffX /= 2;
-    }
-
-    piece.sprite.x = 12 + typeOffX + pieceOffX;
-    piece.sprite.y = 12 + Math.floor((piece.id - 1) / 2) * 70;
-
-    if (this._alliance == 1) {
-        piece.sprite.x = 304 - piece.sprite.x - 64;
-        piece.sprite.y = 304 - piece.sprite.y - 64;
-    }
-};
-
-Shogi_Hand.prototype._hoverPieceOverBoard = function(piece) {
-    var coords = Game.input().mouse.getLocalPosition(Game.board.sprite);
-    
-    Game.board.placePiece(piece);
-    piece.sprite.x = coords['x'] - (piece.sprite.width / 2);
-    piece.sprite.y = coords['y'] - (piece.sprite.height / 2);
-};
-
-Shogi_Hand.prototype._onClick = function() {
-    if (!Game.currentPlayer || Game.board.activePiece()) {
-        return;
-    }
-
-    if (this.parentObj.alliance != Game.currentPlayer.alliance) {
-        return;
-    }
-
-    var coords = Game.input().mouse.getLocalPosition(this);
-    var x = (this.parentObj.alliance == 1 ? 304 - coords['x'] : coords['x']);
-    var y = (this.parentObj.alliance == 1 ? 304 - coords['y'] : coords['y']);
-
-    var pieceId = Math.floor((y - 12) / 70) * 2 + Math.floor((x - 12) / 160);
-    pieceId = Math.min(pieceId, 6);
-
-    var xBound = (pieceId % 2) * 160;
-    var yBound = Math.floor(pieceId / 2) * 70;
-    if (x >= xBound && x < xBound + 64 && y >= yBound && y < yBound + 64) {
-        this.parentObj.pickUpPiece(pieceId + 1);
-    }
-};
- 
-//=============================================================================
-// ** Shogi_Piece
-//=============================================================================
-
-function Shogi_Piece() {
-    this.initialize.apply(this, arguments);
-}
-
-Object.defineProperties(Shogi_Piece.prototype, {
-    id: { get: function() { return this._id; } },
-    alliance: { 
-        get: function() { return this._alliance; },
-        set: function(value) { this._alliance = value; }
-    },
-    x: { get: function() { return this._x; } },
-    y: { get: function() { return this._y; } },
-    active: { get: function() { return this._active; } },
-});
-
-Shogi_Piece.prototype.initialize = function(id, alliance) {
-    this._id = id;
-    this._alliance = alliance;
-    this._x = 0;
-    this._y = 0;
-    this._active = false;
-    this._promoted = false;
-    this._createSprite();
-    this._createInteractiveEvents();
-};
-
-Shogi_Piece.prototype.isPromoted = function() {
-    return this._promoted;
-};
-
-Shogi_Piece.prototype.moveTo = function(x, y) {
-    this._x = x;
-    this._y = y;
-    this.moveSpriteTo(this._x * 64, this._y * 64);
-};
-
-Shogi_Piece.prototype.moveSpriteTo = function(x, y) {
-    this.sprite.x = x;
-    this.sprite.y = y;
-};
-
-Shogi_Piece.prototype.activate = function() {
-    this._active = true;
-    Game.board.pushToFront(this.sprite);
-};
-    
-Shogi_Piece.prototype.deactivate = function() {
-    this._active = false;
-    Game.board.pushToBack(this.sprite);
-};
-
-Shogi_Piece.prototype.promote = function() {
-    this._promoted = true;
-    this._updateSpriteFrame();
-};
-
-Shogi_Piece.prototype.demote = function() {
-    this._promoted = false;
-    this._updateSpriteFrame();
-};
-
-Shogi_Piece.prototype.setAlliance = function(alliance) {
-    this._alliance = alliance;
-    this._updateSpriteFrame();
-};
-
-Shogi_Piece.prototype.promoteIfPossible = function() {
-    var pieceCanPromote = [1, 2, 4, 5, 6, 7].includes(this._id);
-    var insidePromotionZone = (
-        this._alliance == 0 && this._y <= 2 || 
-        this._alliance == 1 && this._y >= 6
-    );
-
-    if (pieceCanPromote && insidePromotionZone) {
-        this.promote();
-    }
-};
-
-Shogi_Piece.prototype.movementRange = function() {
-    var range = [];
-
-    if (this._id == 0) {
-        range = range.concat(this._movementRangeForOu());
-    } else if (this._id == 1) {
-        range = range.concat(this._movementRangeForHissha());
-    } else if (this._id == 2) {
-        range = range.concat(this._movementRangeForKaku());
-    } else if (this._id == 3 || this._promoted) {
-        range = range.concat(this._movementRangeForKin());
-    } else if (this._id == 4) {
-        range = range.concat(this._movementRangeForGin());
-    } else if (this._id == 5) {
-        range = range.concat(this._movementRangeForKeima());
-    } else if (this._id == 6) {
-        range = range.concat(this._movementRangeForKyo());
-    } else if (this._id == 7) {
-        range = range.concat(this._movementRangeForFu())
-    }
-
-    for (var i = range.length - 1; i >= 0; i--) {
-        var occupyPiece = Game.board.pieceAt(range[i][0], range[i][1]);
-        var blocked = (occupyPiece && occupyPiece.alliance == this._alliance);
-        var valid = Game.board.valid(range[i][0], range[i][1]);
-
-        if (blocked || !valid) {
-            range.splice(i, 1);
-        }
-    }
-
-    return range;
-};
-
-Shogi_Piece.prototype._forward = function() {
-    return (this._alliance == 0 ? -1 : 1);
-};
-
-Shogi_Piece.prototype._movementRangeForOu = function() {
-    var range = [];
-    
-    for (var j = -1; j <= 1; j++) {
-        for (var i = -1; i <= 1; i++) {
-            if (i == 0 && j == 0) {
-                continue;
-            }
-            range.push([this._x + i, this._y + j]);
-        }
-    }
-
-    return range;
-};
-
-Shogi_Piece.prototype._movementRangeForHissha = function() {
-    var range = [];
-    range = range.concat(this._rangeInDirection(this._x, this._y, 0, -1));
-    range = range.concat(this._rangeInDirection(this._x, this._y, -1, 0));
-    range = range.concat(this._rangeInDirection(this._x, this._y, 1, 0));
-    range = range.concat(this._rangeInDirection(this._x, this._y, 0, 1));
-    if (this._promoted) {
-        range.push([this._x - 1, this._y - 1]);
-        range.push([this._x - 1, this._y + 1]);
-        range.push([this._x + 1, this._y - 1]);
-        range.push([this._x + 1, this._y + 1]);
-    }
-    return range;
-};
-
-Shogi_Piece.prototype._movementRangeForKaku = function() {
-    var range = [];
-    range = range.concat(this._rangeInDirection(this._x, this._y, -1, -1));
-    range = range.concat(this._rangeInDirection(this._x, this._y, -1, 1));
-    range = range.concat(this._rangeInDirection(this._x, this._y, 1, -1));
-    range = range.concat(this._rangeInDirection(this._x, this._y, 1, 1));
-    if (this._promoted) {
-        range.push([this._x + 1, this._y]);
-        range.push([this._x - 1, this._y]);
-        range.push([this._x, this._y - 1]);
-        range.push([this._x, this._y + 1]);
-    }
-    return range;
-};
-
-Shogi_Piece.prototype._movementRangeForKin = function() {
-    var range = [];
-    range.push([this._x - 1, this._y + this._forward()]);
-    range.push([this._x, this._y + this._forward()]);
-    range.push([this._x + 1, this._y + this._forward()]);
-    range.push([this._x - 1, this._y]);
-    range.push([this._x + 1, this._y]);
-    range.push([this._x, this._y - this._forward()]);
-    return range;
-};
-
-Shogi_Piece.prototype._movementRangeForGin = function() {
-    var range = [];
-    range.push([this._x - 1, this._y + this._forward()]);
-    range.push([this._x, this._y + this._forward()]);
-    range.push([this._x + 1, this._y + this._forward()]);
-    range.push([this._x - 1, this._y - this._forward()]);
-    range.push([this._x + 1, this._y - this._forward()]);
-    return range;
-};
-
-Shogi_Piece.prototype._movementRangeForKeima = function() {
-    var range = [];
-    range.push([this._x - 1, this._y + this._forward() * 2]);
-    range.push([this._x + 1, this._y + this._forward() * 2]);
-    return range;
-};
-
-Shogi_Piece.prototype._movementRangeForFu = function() {
-    var range = [[this._x, this._y + this._forward()]];
-    return range;
-};
-
-Shogi_Piece.prototype._movementRangeForKyo = function() {
-    var range = [];
-    range = range.concat(
-        this._rangeInDirection(this._x, this._y, 0, this._forward())
-    );
-    return range;
-};
-
-Shogi_Piece.prototype.vision = function() {
-    var vision = [[this._x, this._y]];
-
-    if (this._id == 0) {
-        vision = vision.concat(this._visionDiamond(3));
-    } else if (this._id == 1) {
-        if (this._promoted) {
-            vision.push([this._x - 4, this._y]);
-            vision.push([this._x + 4, this._y]);
-            vision.push([this._x, this._y - 4]);
-            vision.push([this._x, this._y + 4]);
-        }
-        vision = vision.concat(this._visionDiamond(3));
-    } else if (this._id == 2) {
-        vision = vision.concat(this._visionInDirection(this._x, this._y, -1, -1));
-        vision = vision.concat(this._visionInDirection(this._x, this._y, -1, 1));
-        vision = vision.concat(this._visionInDirection(this._x, this._y, 1, -1));
-        vision = vision.concat(this._visionInDirection(this._x, this._y, 1, 1));
-        if (this._promoted) {
-            vision = vision.concat(this._visionDiamond(1));
-        }
-    } else if (this._id == 3 || this._id == 4 || this._promoted) {
-        vision = vision.concat(this._visionDiamond(2));
-    } else if (this._id == 5) {
-        vision = vision.concat(this._visionDiamond(3));
-    } else if (this._id == 6) {
-        vision = vision.concat(
-            this._visionInDirection(this._x, this._y, 0, this._forward())
-        );
-    } else if (this._id == 7) {
-        vision.push([this._x - 1, this._y + this._forward()]);
-        vision.push([this._x, this._y + this._forward()]);
-        vision.push([this._x + 1, this._y + this._forward()]);
-        vision.push([this._x, this._y + this._forward() * 2]);
-    }
-
-    for (var i = vision.length - 1; i >= 0; i--) {
-        if (!Game.board.valid(vision[i][0], vision[i][1])) {
-            vision.splice(i, 1);
-        }
-    }
-
-    return vision;
-};
-
-Shogi_Piece.prototype._nodesInDirection = function(sx, sy, xDir, yDir, vision) {
-    var range = [];
-
-    var i = xDir;
-    var j = yDir;
-    
-    while (true) {
-        if (!Game.board.valid(sx + i, sy + j)) {
-            break;
-        }
-        range.push([sx + i, sy + j]);
-        if (Game.board.pieceAt(sx + i, sy + j)) {
-            if (vision || !Game.board.isFog(sx + i, sy + j)) {
-                break;
-            }   
-        }
-        
-        i += xDir;
-        j += yDir;
-    }
-
-    return range;
-};
-
-Shogi_Piece.prototype._rangeInDirection = function(sx, sy, xDir, yDir) {
-    return this._nodesInDirection(sx, sy, xDir, yDir, false);
-};
-
-Shogi_Piece.prototype._visionInDirection = function(sx, sy, xDir, yDir) {
-    return this._nodesInDirection(sx, sy, xDir, yDir, true);
-};
-
-Shogi_Piece.prototype._visionDiamond = function(radius) {
-    var vision = []
-
-    for (var j = -radius; j <= radius; j++) {
-        for (var i = -radius; i <= radius; i++) {
-            if (i == 0 && j == 0 || Math.abs(i) + Math.abs(j) > radius) {
-                continue;
-            }
-            vision.push([this._x + i, this._y + j]);
-        }
-    }
-
-    return vision;
-};
-
-Shogi_Piece.prototype._createSprite = function() {
-    var baseTexture = PIXI.loader.resources['img/pieces.png'].texture;
-    var texture = new PIXI.Texture(baseTexture);
-    this.sprite = new PIXI.Sprite(texture);
-    this._updateSpriteFrame();
-};
-
-Shogi_Piece.prototype._createInteractiveEvents = function() {
-    this.sprite.interactive = true;
-    this.sprite.on('mousemove', this._onMouseMove);
-};
-
-Shogi_Piece.prototype._updateSpriteFrame = function() {
-    var frameX = this._id * 64;
-    var frameY = this._alliance * 128 + (this._promoted ? 64 : 0);
-
-    this.sprite.texture.frame = new PIXI.Rectangle(frameX, frameY, 64, 64);
-    this.sprite.parentObj = this;
-};
-
-Shogi_Piece.prototype._onMouseMove = function() {
-    if (!this.parentObj.active) {
-        return;
-    }
-
-    var coords = Game.input().mouse.getLocalPosition(Game.board.sprite);
-    this.x = coords['x'] - (this.width / 2);
-    this.y = coords['y'] - (this.height / 2);
-};
-
-//=============================================================================
-// ** Shogi_Fog
-//=============================================================================
-
-function Shogi_Fog() {
-    this.initialize.apply(this, arguments);
-}
-
-Shogi_Fog.prototype.initialize = function(board) {
-    this._board = board;
-    this._createSprites();
-};
-
-Shogi_Fog.prototype._createSprites = function() {
-    this._sprites = []
-
-    for (var j = 0; j < 9; j++) {
-        this._sprites[j] = [];
-
-        for (var i = 0; i < 9; i++) {
-            var boardSprite = this._board.sprite;
-            var sprite = new PIXI.Sprite.fromImage('img/fog.png');
-
-            sprite.x = i * 64;
-            sprite.y = j * 64;
-            sprite.alpha = 0.5;
-            this._sprites[j][i] = sprite;
-
-            boardSprite.addChildAt(sprite, boardSprite.children.length);
-        }
-    }
-};
-
-Shogi_Fog.prototype.update = function() {
-    for (var j = 0; j < 9; j++) {
-        for (var i = 0; i < 9; i++) {
-            this._sprites[j][i].alpha = 0.5;
-        }
-    }
-
-    var vision = Game.player.vision();
-    for (var i = 0; i < vision.length; i++) {
-        this._sprites[vision[i][1]][vision[i][0]].alpha = 0;
-    }
-};
-
 //=============================================================================
 // ** Game
 //=============================================================================
@@ -941,77 +16,139 @@ Game.preloadAllAssets = function() {
 };
 
 Game.run = function() {
-    Game.createContext();
-    Game.createBoard();
-    Game.createPlayers();
-    Game.board.updateFog();
-    Game.placeBoardOnTop();
+    BattleManager.init();
+    Game._createContext();
+    Game._createBoard();
+    Game._createPieces();
+    Game._createFog();
+    Game._createCountSprites();
+    BattleManager.endTurn();
+    Game.alignAllSprites();
 };
 
-Game.input = function() {
-    return Game.context.renderer.plugins.interaction;
+Game.pushToFront = function(sprite) {
+    this.context.stage.removeChild(sprite);
+    this.context.stage.addChildAt(sprite, this.context.stage.children.length);
 };
 
-Game.endTurn = function() {
-    switch (Game.board.judgeWinLoss()) {
-        case 0:
-            Game.switchPlayers();
-            break;
-        case 1:
-            Game.declareWin();
-            break;
-        case 2:
-            Game.declareLoss();
-            break;
+Game.showWinDialog = function() {
+    alert('You win!');
+};
+
+Game.showLossDialog = function() {
+    alert('You lose...');
+};
+
+Game.closePromotionDialog = function() {
+    this.context.stage.removeChild(this._backgroundSprite);
+    this.context.stage.removeChild(this._dialogSprite.sprite);
+};
+
+Game.processEvent = function(actionList, checkForPromote) {
+    if (actionList.isValid()) {
+        this._actionList = actionList;
+        if (checkForPromote) {
+            this._actionList.prepare();
+            Game._promptForPromotion(actionList.piece);
+            return;
+        }
+
+        this._actionList.prepare();
+        Game.performAction(false);
     }
+
+    Game.alignAllSprites();
 };
 
-Game.switchPlayers = function() {
-    if (this.player == this.currentPlayer) {
-        this.currentPlayer = this.enemy;
-    } else {
-        this.currentPlayer = this.player;
+Game.performAction = function(withPromote) {
+    if (withPromote && this._actionList.canPromote()) {
+        var action = new Game_Action(this._actionList.piece, 'promote');
+        this._actionList.addAction(action);
     }
 
-    if (this.currentPlayer instanceof Shogi_Enemy) {
-        var move = this.currentPlayer.selectMove();
-        this.currentPlayer.executeMove(move);
+    BattleManager.queueAction(this._actionList);
+    BattleManager.performNextAction();
+    BattleManager.endTurn();
+    Game.alignAllSprites();
+};
+
+Game.alignAllSprites = function() {
+    for (var i = 0; i < this._pieceSprites.length; i++) {
+        this._pieceSprites[i].alignToObject();
     }
+
+    for (var i = 0; i < this._fogSprites.length; i++) {
+        this.pushToFront(this._fogSprites[i].sprite);
+        this._fogSprites[i].refresh();
+    }
+
+    this._leftCountSprite.refresh();
+    this._rightCountSprite.refresh();
 };
 
-Game.declareWin = function() {
-    alert('You are winrar!');
-    this.currentPlayer = null;
+Game._promptForPromotion = function(piece) {
+    this._createBackgroundSprite();
+    this._createPromotionDialog(piece);
 };
 
-Game.declareLoss = function() {
-    alert('You are losar!');
-    this.currentPlayer = null;
-};
-
-Game.createContext = function() {
+Game._createContext = function() {
     this.context = new PIXI.Application(
-        Game.WINDOW_WIDTH,
-        Game.WINDOW_HEIGHT, 
-        {backgroundColor: 0x1099bb},
+        this.WINDOW_WIDTH,
+        this.WINDOW_HEIGHT, 
+        {backgroundColor: 0x10A0C0},
     );
 
     document.body.appendChild(this.context.view);
 };
 
-Game.createPlayers = function() {
-    this.player = new Shogi_Player(0);
-    this.enemy = new Shogi_Enemy(1);
-    this.currentPlayer = this.player;
+Game._createBoard = function() {
+    this._boardSprite = new PIXI.Sprite.fromImage('img/board.png');
+    this._boardSprite.x = (Game.WINDOW_WIDTH - 576) / 2;
+    this._boardSprite.y = (Game.WINDOW_HEIGHT - 576) / 2;
+    this.context.stage.addChild(this._boardSprite);
 };
 
-Game.createBoard = function() {
-    this.board = new Shogi_Board();
+Game._createPieces = function() {
+    this._pieceSprites = [];
+    for (var i = 0; i < BattleManager.board.pieces.length; i++) {
+        var sprite = new Sprite_Piece(BattleManager.board.pieces[i]);
+        this._pieceSprites.push(sprite);
+    }
 };
 
-Game.placeBoardOnTop = function() {
-    var stage =  Game.context.stage;
-    stage.addChildAt(this.board.sprite, stage.children.length);
+Game._createFog = function() {
+   this._fogSprites = [];
+   for (var y = 0; y < 9; y++) {
+       for (var x = 0; x < 9; x++) {
+           var fogSprite = new Sprite_Fog(x, y);
+           this._fogSprites.push(fogSprite);
+       }
+    }    
+};
+
+Game._createCountSprites = function() {
+    this._leftCountSprite = new Sprite_PieceCount(0);
+    this._rightCountSprite = new Sprite_PieceCount(1);
+};
+
+Game._createBackgroundSprite = function() {
+    this._backgroundSprite = new PIXI.Graphics();
+    this._backgroundSprite.interactive = true;
+    this._backgroundSprite.alpha = 0.75;
+
+    this._backgroundSprite.beginFill(0xA0A0A0);
+    this._backgroundSprite.drawRect(0, 0, this.WINDOW_WIDTH, this.WINDOW_HEIGHT);
+    this._backgroundSprite.endFill();
+
+    var back = this.context.stage.children.length;
+    this.context.stage.addChildAt(this._backgroundSprite, back);
+};
+
+Game._createPromotionDialog = function(piece) {
+    var x = (Game.WINDOW_WIDTH - 192) / 2;
+    var y = (Game.WINDOW_HEIGHT - 160) / 2
+
+    this._dialogSprite = new Sprite_DialogPromotion(x, y, 192, 160, piece);
 };
 
 //=============================================================================

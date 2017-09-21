@@ -12,11 +12,20 @@ BattleManager.init = function() {
     this._actionQueue = [];
     this._actionIndex = 0;
     this._createPlayers();
+    this._createFogs();
 };
 
 BattleManager.isPlayerTurn = function() {
     return this.turn === this._playerTurn;
 };
+
+BattleManager.getFog = function(alliance) {
+    if (alliance == this._playerTurn) {
+        return this.playerFog;
+    }
+
+    return this.enemyFog;
+}
 
 BattleManager.requestAction = function(actionList) {
     this.queueAction(actionList);
@@ -45,6 +54,9 @@ BattleManager.advanceTurn = function() {
 };
 
 BattleManager.endTurn = function() {
+    BattleManager.playerFog.refresh();
+    BattleManager.enemyFog.refresh();
+
     switch (this.judgeWinLoss()) {
         case 0:
             this.advanceTurn();
@@ -65,4 +77,9 @@ BattleManager.judgeWinLoss = function() {
 BattleManager._createPlayers = function() {
     this._playerTurn = Math.floor(Math.random() * 2);
     this.enemy = new Game_AI((this._playerTurn + 1) % 2);
+};
+
+BattleManager._createFogs = function() {
+    this.playerFog = new Game_Fog(this._playerTurn);
+    this.enemyFog = new Game_Fog(this.enemy.alliance);
 };

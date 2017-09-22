@@ -16,21 +16,16 @@ BattleManager.init = function() {
 };
 
 BattleManager.isPlayerTurn = function() {
-    return this.turn === this._playerTurn;
+    return this.turn === this.player.alliance;
 };
 
 BattleManager.getFog = function(alliance) {
-    if (alliance == this._playerTurn) {
+    if (alliance == this.player.alliance) {
         return this.playerFog;
     }
 
     return this.enemyFog;
 }
-
-BattleManager.requestAction = function(actionList) {
-    this.queueAction(actionList);
-    this.performNextAction();
-};
 
 BattleManager.queueAction = function(actionList) {
     this._actionQueue.push(actionList);
@@ -42,8 +37,12 @@ BattleManager.performNextAction = function() {
 };
 
 BattleManager.undoPreviousAction = function() {
-    this._actionQueue[this._actionIndex].undo();
     this._actionIndex -= 1;
+    this._actionQueue[this._actionIndex].undo();
+};
+
+BattleManager.popAction = function() {
+    this._actionQueue.pop();
 };
 
 BattleManager.advanceTurn = function() {
@@ -75,11 +74,11 @@ BattleManager.judgeWinLoss = function() {
 };
 
 BattleManager._createPlayers = function() {
-    this._playerTurn = Math.floor(Math.random() * 2);
-    this.enemy = new Game_AI((this._playerTurn + 1) % 2);
+    this.player = new Game_Player(Math.floor(Math.random() * 2));
+    this.enemy = new Game_AI((this.player.alliance + 1) % 2);
 };
 
 BattleManager._createFogs = function() {
-    this.playerFog = new Game_Fog(this._playerTurn);
+    this.playerFog = new Game_Fog(this.player.alliance);
     this.enemyFog = new Game_Fog(this.enemy.alliance);
 };

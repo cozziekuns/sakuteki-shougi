@@ -109,7 +109,7 @@ Game_ActionList.prototype.execute = function() {
 };
 
 Game_ActionList.prototype.undo = function() {
-    for (var i = this._actions.length - 1; i >= 0; i--) {
+    for (var i = this._actions.length - 1; i >= 0; i--) {        
         this._actions[i].undo();
     }
 };
@@ -221,29 +221,23 @@ Game_ActionList.prototype._prepareForcePromote = function() {
 };
 
 //=============================================================================
-// ** Game_AI
+// ** Game_Player
 //=============================================================================
 
-function Game_AI() {
+function Game_Player() {
     this.initialize.apply(this, arguments);
 };
 
-Object.defineProperties(Game_AI.prototype, {
+Object.defineProperties(Game_Player.prototype, {
     alliance: { get: function() { return this._alliance; } },
 });
 
-Game_AI.prototype.initialize = function(alliance) {
+Game_Player.prototype.initialize = function(alliance) {
     this._alliance = alliance;
 };
 
-Game_AI.prototype.takeTurn = function() {
-    var moves = this._getAllActions();
-    var action = moves[Math.floor(Math.random() * moves.length)];
-    Game.processEvent(action, false);
-};
-
-Game_AI.prototype._getAllActions = function() {
-    var moves = [];
+Game_Player.prototype.getAllActions = function() {
+    var actions = [];
     for (var y = 0; y < 9; y++) {
         for (var x = 0; x < 9; x++) {
             for (var i = 0; i < BattleManager.board.pieces.length; i++) {
@@ -252,15 +246,15 @@ Game_AI.prototype._getAllActions = function() {
                     continue;
                 }
 
-                moves = moves.concat(this._getPossibleActions(piece, x, y));
+                actions = actions.concat(this._getPossibleActions(piece, x, y));
             }
         }
     }
     
-    return moves;
+    return actions;
 };
 
-Game_AI.prototype._getPossibleActions = function(piece, destX, destY) {
+Game_Player.prototype._getPossibleActions = function(piece, destX, destY) {
     var actions = [];
 
     var actionList = new Game_ActionList(piece, destX, destY);
@@ -269,9 +263,7 @@ Game_AI.prototype._getPossibleActions = function(piece, destX, destY) {
     }
 
     if (piece.onBoard()) {
-        if (piece.mustPromote(destX, destY)) {
-            actionList.addAction(new Game_Action(piece, 'promote'));
-        } else if (piece.canPromote(destY)) {
+        if (piece.canPromote(destY) && !piece.mustPromote(destX, destY)) {
             var promoteActionList = new Game_ActionList(piece, destX, destY);
             promoteActionList.addAction(new Game_Action(piece, 'promote'));
             actions.push(promoteActionList);
@@ -280,6 +272,115 @@ Game_AI.prototype._getPossibleActions = function(piece, destX, destY) {
 
     actions.push(actionList);
     return actions;
+};
+
+//=============================================================================
+// ** Game_AI
+//=============================================================================
+
+function Game_AI() {
+    this.initialize.apply(this, arguments);
+};
+
+Game_AI.prototype = Object.create(Game_Player.prototype);
+Game_AI.prototype.constructor = Game_AI;
+
+Game_AI.prototype.initialize = function(alliance) {
+    Game_Player.prototype.initialize.call(this, alliance);
+};
+
+Game_AI.prototype.takeTurn = function() {
+    var actions = this.getAllActions();
+
+    var bestActionIndex = 0;
+    var bestValue = Number.NEGATIVE_INFINITY;
+    for (var i = 0; i < actions.length; i++) {
+        var action = actions[i];
+        action.prepare();
+
+        var negamaxValue = this._negamax(action, 2, this._alliance);
+        if (bestValue < negamaxValue) {
+            bestActionIndex = i;
+            bestValue = negamaxValue;
+        }
+    }
+    
+    Game.processEvent(this.getAllActions()[bestActionIndex], false);
+};
+
+// TODO: For now, pretend that Fog of War doesn't exist
+Game_AI.prototype._negamax = function(actionList, depth, colour) {
+    BattleManager.queueAction(actionList);
+    BattleManager.performNextAction();
+
+    if (depth == 0 || BattleManager.judgeWinLoss() == 0) {
+        var bestValue = this._evaluateBoardState(colour);
+    } else {
+        if (colour == this._alliance) {
+            var actions = this.getAllActions();
+        } else {
+            var actions = BattleManager.player.getAllActions();
+        }
+        
+        var bestValue = Number.NEGATIVE_INFINITY;
+        for (var i = 0; i < actions.length; i++) {
+            actions[i].prepare();
+    
+            var value = -negamax(actions[i], depth - 1, (colour + 1) % 2);
+            bestValue = Math.max(value, bestValue);
+        }
+    }
+
+    BattleManager.undoPreviousAction();
+    BattleManager.popAction();
+
+    return bestValue;
+};
+
+Game_AI.prototype._evaluateBoardState = function(colour) {
+    var pieceValues = 0;
+    var movementOptions = 0;
+
+    for (var i = 0; i < BattleManager.board.pieces.length; i++) {
+        var piece = BattleManager.board.pieces[i];
+        var modifier = (piece.alliance == colour ? 1 : -1);
+
+        switch (piece.id) {
+            case 0:
+                pieceValues += 10000 * modifier;
+                break;
+            case 1:
+                pieceValues += (piece.promoted ? 12 : 10) * modifier;
+                break;
+            case 2:
+                pieceValues += (piece.promoted ? 11 : 9) * modifier;
+                break;
+            case 3:
+                pieceValues += 6 * modifier;
+                break;
+            case 4:
+                pieceValues += (piece.promoted ? 6 : 5) * modifier;
+                break;
+            case 5:
+                pieceValues += (piece.promoted ? 6 : 4) * modifier;
+                break;
+            case 6:
+                pieceValues += (piece.promoted ? 6 : 3) * modifier;
+                break;
+            case 7:
+                pieceValues += (piece.promoted ? 7 : 1) * modifier;
+        }
+    }
+
+    if (colour == BattleManager.player.alliance) {
+        movementOptions += BattleManager.player.getAllActions().length;
+        movementOptions -= BattleManager.enemy.getAllActions().length;
+    } else {
+        movementOptions += BattleManager.enemy.getAllActions().length;
+        movementOptions -= BattleManager.player.getAllActions().length;
+    }
+
+    return pieceValues * 5 + movementOptions;
 };
 
 //=============================================================================
@@ -326,6 +427,7 @@ Game_Board.prototype.capturedPiecesCount = function(id, alliance) {
     return count;
 };
 
+// TODO: Fix this
 Game_Board.prototype._createPieces = function() {
     this._pieces = [];
     for (var alliance = 0; alliance < 2; alliance++) {
@@ -511,9 +613,10 @@ Game_Piece.prototype.moveTo = function(x, y) {
     this._y = y;
 };
 
-Game_Piece.prototype.capture = function() {
+Game_Piece.prototype.capture = function() { 
     this.moveTo(-1, -1);
     this._switchAlliance();
+    
 };
 
 Game_Piece.prototype.decapture = function(x, y) {
